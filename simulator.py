@@ -118,27 +118,34 @@ def parse_time(value):
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        url = urlparse(self.path)
-        args = parse_qs(url.query)
-
-        if url.path == "/":
+        path = urlparse(self.path).path
+        if path == "/":
             return self.reply(200, "text/html", load_page())
-        if url.path == "/relay1/on":
+        if path == "/api/state":
+            return self.send_state()
+        self.reply(404, "text/plain", b"Not found")  # actions are POST only, like the firmware
+
+    def do_POST(self):
+        path = urlparse(self.path).path
+        length = int(self.headers.get("Content-Length") or 0)
+        args = parse_qs(self.rfile.read(length).decode())  # form-encoded body
+
+        if path == "/relay1/on":
             state.update(global_on=True, global_off=False)
-        elif url.path == "/relay1/off":
+        elif path == "/relay1/off":
             state.update(global_on=False, global_off=True)
-        elif url.path == "/relay1/clear":
+        elif path == "/relay1/clear":
             state.update(global_on=False, global_off=False)
-        elif url.path == "/disable":
+        elif path == "/disable":
             state["pause_until"] = time.time() + 5 * 60
-        elif url.path == "/setSchedule":
+        elif path == "/setSchedule":
             days = {int(d) for d in args.get("day", []) if d.isdigit()}
             state["days"] = [i in days for i in range(7)]
             for key, field in (("startTime", "start"), ("endTime", "end")):
                 parsed = parse_time(args.get(key, [""])[0])
                 if parsed:
                     state[field] = parsed
-        elif url.path == "/config":
+        elif path == "/config":
             if "name" in args:
                 state["name"] = clean_name(args["name"][0])
             pin = args.get("pin", [""])[0]
@@ -146,9 +153,11 @@ class Handler(BaseHTTPRequestHandler):
                 state["pin"] = int(pin)
             if "activeHigh" in args:
                 state["active_high"] = args["activeHigh"][0] in ("1", "true")
-        elif url.path != "/api/state":
+        else:
             return self.reply(404, "text/plain", b"Not found")
+        self.send_state()
 
+    def send_state(self):
         self.reply(200, "application/json", json.dumps(state_json()).encode())
 
     def reply(self, code, content_type, body):

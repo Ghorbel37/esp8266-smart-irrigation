@@ -242,7 +242,7 @@ $('cfgBtn').onclick=()=>$('cfg').classList.contains('hidden')?openCfg():$('cfg')
 $('cfgCancel').onclick=()=>$('cfg').classList.add('hidden');
 $('cfg').onsubmit=async e=>{e.preventDefault();
 const q=new URLSearchParams({name:$('cfgName').value,pin:$('cfgPin').value,activeHigh:$('cfgHigh').checked?1:0});
-if(await call('/config?'+q))$('cfg').classList.add('hidden')};
+if(await call('/config',q))$('cfg').classList.add('hidden')};
 function render(s){
 last=s;$('title').textContent=s.name;document.title=s.name;
 $('clock').textContent=s.time;
@@ -254,10 +254,11 @@ document.querySelectorAll('[data-m]').forEach(b=>{const a=b.dataset.m==(s.mode==
 b.className='rounded-xl py-2.5 text-sm font-medium '+(a?'bg-slate-900 text-white dark:bg-sky-600':'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700')});
 $('pause').textContent=s.paused>0?'Paused ('+m+' min left)':'Pause 5 minutes';
 if(!dirty){[...days.children].forEach((b,i)=>{b.dataset.on=s.days[i]?'1':'0';paint(b)});$('start').value=s.start;$('end').value=s.end}}
-async function call(u){try{const r=await fetch(u);if(!r.ok)throw 0;const s=await r.json();$('err').classList.add('hidden');render(s);return s}
+// Actions are sent as POST (a GET could be triggered by a link preview or another website)
+async function call(u,q){try{const r=await fetch(u,q&&{method:'POST',body:q});if(!r.ok)throw 0;const s=await r.json();$('err').classList.add('hidden');render(s);return s}
 catch(e){$('err').textContent='Could not reach the controller. Check that it is powered and on Wi-Fi.';$('err').classList.remove('hidden')}}
-document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>call('/relay1/'+b.dataset.m));
-$('pause').onclick=()=>call('/disable');
+document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>call('/relay1/'+b.dataset.m,new URLSearchParams()));
+$('pause').onclick=()=>call('/disable',new URLSearchParams());
 // Toggle the theme; picking the same theme as the device goes back to following the device
 $('theme').onclick=()=>{const d=!document.documentElement.classList.contains('dark');
 try{d==dq.matches?localStorage.removeItem('theme'):localStorage.theme=d?'dark':'light'}catch(e){}
@@ -265,7 +266,7 @@ document.documentElement.classList.toggle('dark',d)};
 $('sched').onsubmit=async e=>{e.preventDefault();const q=new URLSearchParams();
 [...days.children].forEach((b,i)=>{if(b.dataset.on=='1')q.append('day',i)});
 q.append('startTime',$('start').value);q.append('endTime',$('end').value);
-dirty=0;if(await call('/setSchedule?'+q)){$('saved').textContent='Saved';setTimeout(()=>$('saved').textContent='',2000)}};
+dirty=0;if(await call('/setSchedule',q)){$('saved').textContent='Saved';setTimeout(()=>$('saved').textContent='',2000)}};
 call('/api/state');setInterval(()=>call('/api/state'),5000);
 </script></body></html>)rawliteral";
 
@@ -400,28 +401,29 @@ void setup() {
 
   server.on("/api/state", HTTP_GET, sendState);
 
-  server.on("/relay1/on", HTTP_GET, []() {
+  // Actions only accept POST, with form-encoded arguments in the body
+  server.on("/relay1/on", HTTP_POST, []() {
     globalOff = LOW;
     globalOn = HIGH;
     saveSettings();
     sendState();
   });
 
-  server.on("/relay1/off", HTTP_GET, []() {
+  server.on("/relay1/off", HTTP_POST, []() {
     globalOn = LOW;
     globalOff = HIGH;
     saveSettings();
     sendState();
   });
 
-  server.on("/relay1/clear", HTTP_GET, []() {
+  server.on("/relay1/clear", HTTP_POST, []() {
     globalOn = LOW;
     globalOff = LOW;
     saveSettings();
     sendState();
   });
 
-  server.on("/setSchedule", HTTP_GET, []() {
+  server.on("/setSchedule", HTTP_POST, []() {
     for (int i = 0; i < 7; i++) {
       schedule.days[i] = false;
     }
@@ -450,8 +452,8 @@ void setup() {
     sendState();
   });
 
-  // Device settings: /config?name=Garden&pin=13&activeHigh=0 (every argument is optional)
-  server.on("/config", HTTP_GET, []() {
+  // Device settings: POST /config with name=Garden&pin=13&activeHigh=0 (every argument is optional)
+  server.on("/config", HTTP_POST, []() {
     if (server.hasArg("name")) setDeviceName(server.arg("name"));
     if (server.hasArg("pin")) {
       int pin = server.arg("pin").toInt();
@@ -465,7 +467,7 @@ void setup() {
     sendState();
   });
 
-  server.on("/disable", HTTP_GET, []() {
+  server.on("/disable", HTTP_POST, []() {
     disableUntil = millis() + 5UL * 60 * 1000; // Disable for 5 minutes
     sendState();
   });

@@ -134,12 +134,19 @@ A run can cross midnight: with Monday selected, 23:00 → 01:00 waters from Mond
 | Endpoint | Action |
 |---|---|
 | `GET /api/state` | Current state |
-| `GET /relay1/on` | Force ON |
-| `GET /relay1/off` | Force OFF |
-| `GET /relay1/clear` | Back to the schedule |
-| `GET /disable` | Pause for 5 minutes |
-| `GET /setSchedule?day=1&day=3&startTime=06:00&endTime=06:30` | Save the schedule (days: 0 = Sunday … 6 = Saturday) |
-| `GET /config?name=Garden&pin=13&activeHigh=0` | Save the device settings (each argument is optional; `pin` is a GPIO number: 5, 4, 14, 12 or 13) |
+| `POST /relay1/on` | Force ON |
+| `POST /relay1/off` | Force OFF |
+| `POST /relay1/clear` | Back to the schedule |
+| `POST /disable` | Pause for 5 minutes |
+| `POST /setSchedule` with `day=1&day=3&startTime=06:00&endTime=06:30` | Save the schedule (days: 0 = Sunday … 6 = Saturday) |
+| `POST /config` with `name=Garden&pin=13&activeHigh=0` | Save the device settings (each argument is optional; `pin` is a GPIO number: 5, 4, 14, 12 or 13) |
+
+Actions only accept POST, with the arguments form-encoded in the body, so opening a link can't switch the water on. For example:
+
+```bash
+curl -X POST http://192.168.1.100/relay1/on
+curl -d day=1 -d day=3 -d startTime=06:00 -d endTime=06:30 http://192.168.1.100/setSchedule
+```
 
 Every endpoint returns the same JSON:
 
