@@ -16,8 +16,12 @@ A WiFi-enabled smart irrigation controller built on the ESP8266 microcontroller.
 - Manual override controls (Force ON/OFF)
 - Schedule configuration via web form
 
+⚙️ **Device Settings**
+- Set the device name (shown at the top of the page and in the browser tab), the relay pin, and whether the relay turns on with a HIGH or a LOW signal
+- Changes apply right away, without restarting the board
+
 💾 **Settings Survive Restarts**
-- The schedule and the mode are saved in flash (EEPROM emulation) and restored at boot
+- The schedule, the mode and the device settings are saved in flash (EEPROM emulation) and restored at boot
 - Flash is only written when a value actually changes
 - The 5-minute pause is not saved
 
@@ -46,8 +50,10 @@ A WiFi-enabled smart irrigation controller built on the ESP8266 microcontroller.
 
 | Component | ESP8266 Pin |
 |-----------|-------------|
-| Relay Control | D7 (GPIO13) |
-| Built-in LED | D0 (GPIO16) |
+| Relay Control | D7 (GPIO13) by default; D1, D2, D5, D6 or D7 can be chosen in the device settings |
+| Built-in LED | `LED_BUILTIN` (lights up while connecting to WiFi) |
+
+By default the relay is driven as **active LOW** (it turns on when the pin is LOW), which matches most relay modules. If yours turns on with a HIGH signal, tick "Relay turns on when the pin is HIGH" in the device settings.
 
 ## Software Requirements
 
@@ -131,11 +137,12 @@ This will water your garden for 30 minutes on Monday, Wednesday, and Friday morn
 | `GET /relay1/clear` | Back to the schedule |
 | `GET /disable` | Pause for 5 minutes |
 | `GET /setSchedule?day=1&day=3&startTime=06:00&endTime=06:30` | Save the schedule (days: 0 = Sunday … 6 = Saturday) |
+| `GET /config?name=Garden&pin=13&activeHigh=0` | Save the device settings (each argument is optional; `pin` is a GPIO number: 5, 4, 14, 12 or 13) |
 
 Every endpoint returns the same JSON:
 
 ```json
-{"mode": "auto", "relay": false, "paused": 0, "days": [0,1,0,1,0,0,0], "start": "06:00", "end": "06:30", "time": "14:05", "next": "tomorrow at 06:00"}
+{"mode": "auto", "relay": false, "paused": 0, "days": [0,1,0,1,0,0,0], "start": "06:00", "end": "06:30", "time": "14:05", "next": "tomorrow at 06:00", "name": "Irrigation ESP", "pin": 13, "activeHigh": false}
 ```
 
 ## Try It Without the Board
@@ -152,7 +159,7 @@ You can open it from your phone too at `http://<your-pc-ip>:8000` (same Wi-Fi). 
 ## Wiring Diagram
 
 ```
-ESP8266 (D7) -----> Relay IN
+ESP8266 (D7) -----> Relay IN     (or the pin chosen in the device settings)
 ESP8266 (GND) ----> Relay GND
 ESP8266 (3V3/5V) -> Relay VCC
 
