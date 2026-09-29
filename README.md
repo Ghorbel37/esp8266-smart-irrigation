@@ -11,6 +11,7 @@ A WiFi-enabled smart irrigation controller built on the ESP8266 microcontroller.
 
 🌐 **Web Interface**
 - Responsive page that works on phones (one column) and computers (two columns)
+- Dark mode that follows the device theme, with a toggle button that remembers your choice on each device
 - Status refreshes every 5 seconds: watering or not, current mode, pause time left, next run
 - Manual override controls (Force ON/OFF)
 - Schedule configuration via web form
