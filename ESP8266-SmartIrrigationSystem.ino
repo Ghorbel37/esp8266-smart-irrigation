@@ -293,12 +293,17 @@ bool shouldWater() {
   if (globalOff) return false;
   if (pauseRemainingMs() > 0) return false;
 
-  int h = rtc.getHour(true);
-  int m = rtc.getMinute();
-  bool isScheduledDay = schedule.days[rtc.getDayofWeek()];
-  bool isWithinTime = (h > schedule.startHour || (h == schedule.startHour && m >= schedule.startMinute)) &&
-                      (h < schedule.endHour || (h == schedule.endHour && m < schedule.endMinute));
-  return isScheduledDay && isWithinTime;
+  int now   = rtc.getHour(true) * 60 + rtc.getMinute();
+  int start = schedule.startHour * 60 + schedule.startMinute;
+  int end   = schedule.endHour * 60 + schedule.endMinute;
+  int today = rtc.getDayofWeek();
+
+  if (start < end) return schedule.days[today] && now >= start && now < end;
+  if (start == end) return false;
+  // The run crosses midnight (e.g. 23:00 -> 01:00): the part after midnight
+  // belongs to the run that started the day before
+  int yesterday = (today + 6) % 7;
+  return (schedule.days[today] && now >= start) || (schedule.days[yesterday] && now < end);
 }
 
 // Pin level that turns the relay on or off, depending on the relay module

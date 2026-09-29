@@ -120,6 +120,8 @@ Open a web browser and navigate to the IP address shown in the Serial Monitor (e
 
 This will water your garden for 30 minutes on Monday, Wednesday, and Friday mornings.
 
+A run can cross midnight: with Monday selected, 23:00 → 01:00 waters from Monday 23:00 until Tuesday 01:00.
+
 ### Manual Control
 
 - **Force ON**: Immediately activates irrigation, ignoring the schedule

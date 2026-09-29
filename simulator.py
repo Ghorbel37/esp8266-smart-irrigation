@@ -68,7 +68,14 @@ def should_water():
     if state["global_off"] or paused_seconds() > 0:
         return False
     h, m, day = now()
-    return state["days"][day] and state["start"] <= (h, m) < state["end"]
+    start, end = state["start"], state["end"]
+    if start < end:
+        return state["days"][day] and start <= (h, m) < end
+    if start == end:
+        return False
+    # Crosses midnight: the part after midnight belongs to the previous day's run
+    yesterday = (day + 6) % 7
+    return (state["days"][day] and (h, m) >= start) or (state["days"][yesterday] and (h, m) < end)
 
 
 def next_run():
