@@ -4,7 +4,15 @@
 #include "time.h"
 #include <ESP32Time.h>
 
-#define RELAY_PIN D7  // The ESP8266 pin connected to Relay
+// Defaults, used until they are changed from the web page's settings
+#define DEFAULT_RELAY_PIN   D7                        // The ESP8266 pin connected to the relay
+#define DEFAULT_ACTIVE_HIGH false                     // false: the relay turns on when the pin is LOW
+#define DEFAULT_DEVICE_NAME "Irrigation ESP"          // Shown at the top of the page and in the browser tab
+#define NAME_SIZE 32                                  // Including the terminating zero
+
+// Pins allowed for the relay. D0, D3, D4 and D8 are left out on purpose: they change level
+// during boot (the relay could click) or decide how the board boots, and D0/D4 drive the built-in LEDs.
+const uint8_t RELAY_PINS[] = {D1, D2, D5, D6, D7};
 
 const char *ssid = "REPLACE_WITH_SSID";     // CHANGE IT
 const char *password = "REPLACE_WITH_PASSWORD";  // CHANGE IT
@@ -17,7 +25,10 @@ struct tm timeinfo;
 
 ESP8266WebServer server(80); // Web server on port 80
 
-int RELAY_state = HIGH;
+uint8_t relayPin = DEFAULT_RELAY_PIN;
+bool relayActiveHigh = DEFAULT_ACTIVE_HIGH;
+char deviceName[NAME_SIZE] = DEFAULT_DEVICE_NAME;
+bool relayOn = false;
 unsigned long disableUntil = 0; // Timestamp until which the relay is disabled
 int globalOn = LOW;
 int globalOff = LOW;
@@ -36,9 +47,22 @@ Schedule schedule;
 // ---- Persistent settings (saved in flash via EEPROM emulation) ----
 // Bump SETTINGS_VERSION whenever the Settings layout changes, so old data is ignored.
 #define SETTINGS_MAGIC   0x49525247  // "IRRG"
-#define SETTINGS_VERSION 1
+#define SETTINGS_VERSION 2
 
 struct Settings {
+  uint32_t magic;
+  uint8_t  version;
+  Schedule schedule;
+  uint8_t  globalOn;
+  uint8_t  globalOff;
+  uint8_t  relayPin;
+  uint8_t  relayActiveHigh;
+  char     deviceName[NAME_SIZE];
+  uint8_t  checksum;
+};
+
+// Layout saved by version 1 (before the device settings), read once to migrate
+struct SettingsV1 {
   uint32_t magic;
   uint8_t  version;
   Schedule schedule;
@@ -47,31 +71,78 @@ struct Settings {
   uint8_t  checksum;
 };
 
-uint8_t settingsChecksum(const Settings &s) {
-  const uint8_t *p = (const uint8_t *)&s;
+uint8_t xorChecksum(const void *data, size_t len) {
+  const uint8_t *p = (const uint8_t *)data;
   uint8_t sum = 0;
-  for (size_t i = 0; i < offsetof(Settings, checksum); i++) sum ^= p[i];
+  for (size_t i = 0; i < len; i++) sum ^= p[i];
   return sum;
+}
+
+uint8_t settingsChecksum(const Settings &s) {
+  return xorChecksum(&s, offsetof(Settings, checksum));
 }
 
 bool validTime(int h, int m) {
   return h >= 0 && h < 24 && m >= 0 && m < 60;
 }
 
+bool validSchedule(const Schedule &sc) {
+  return validTime(sc.startHour, sc.startMinute) && validTime(sc.endHour, sc.endMinute);
+}
+
+bool validRelayPin(int pin) {
+  for (uint8_t p : RELAY_PINS) if (p == pin) return true;
+  return false;
+}
+
+// Keep a device name that is safe to put in JSON: printable, no quotes or backslashes, max NAME_SIZE-1 bytes
+void setDeviceName(const String &input) {
+  String name;
+  for (size_t i = 0; i < input.length(); i++) {
+    char c = input[i];
+    if ((uint8_t)c < 0x20 || c == '"' || c == '\\') continue;
+    name += c;
+  }
+  name.trim();
+  if (name.length() > NAME_SIZE - 1) {
+    name = name.substring(0, NAME_SIZE - 1);
+    // Don't cut a UTF-8 character in half
+    while (name.length() && ((uint8_t)name[name.length() - 1] & 0xC0) == 0x80) name.remove(name.length() - 1);
+    if (name.length() && ((uint8_t)name[name.length() - 1] & 0xC0) == 0xC0) name.remove(name.length() - 1);
+  }
+  if (name.length() == 0) name = DEFAULT_DEVICE_NAME;
+  strlcpy(deviceName, name.c_str(), NAME_SIZE);
+}
+
 void loadSettings() {
   Settings s;
   EEPROM.get(0, s);
-  if (s.magic != SETTINGS_MAGIC || s.version != SETTINGS_VERSION ||
-      s.checksum != settingsChecksum(s) ||
-      !validTime(s.schedule.startHour, s.schedule.startMinute) ||
-      !validTime(s.schedule.endHour, s.schedule.endMinute)) {
-    Serial.println("No saved settings, using defaults");
-    return;  // keep the zero-initialized defaults
+  if (s.magic == SETTINGS_MAGIC && s.version == SETTINGS_VERSION &&
+      s.checksum == settingsChecksum(s) && validSchedule(s.schedule)) {
+    schedule  = s.schedule;
+    globalOn  = s.globalOn ? HIGH : LOW;
+    globalOff = s.globalOff ? HIGH : LOW;
+    if (validRelayPin(s.relayPin)) relayPin = s.relayPin;
+    relayActiveHigh = s.relayActiveHigh;
+    s.deviceName[NAME_SIZE - 1] = '\0';
+    setDeviceName(String(s.deviceName));
+    Serial.println("Settings loaded from flash");
+    return;
   }
-  schedule  = s.schedule;
-  globalOn  = s.globalOn ? HIGH : LOW;
-  globalOff = s.globalOff ? HIGH : LOW;
-  Serial.println("Settings loaded from flash");
+
+  // Settings saved by version 1: keep the schedule and mode, use defaults for the rest
+  SettingsV1 v1;
+  EEPROM.get(0, v1);
+  if (v1.magic == SETTINGS_MAGIC && v1.version == 1 &&
+      v1.checksum == xorChecksum(&v1, offsetof(SettingsV1, checksum)) && validSchedule(v1.schedule)) {
+    schedule  = v1.schedule;
+    globalOn  = v1.globalOn ? HIGH : LOW;
+    globalOff = v1.globalOff ? HIGH : LOW;
+    Serial.println("Settings migrated from version 1");
+    return;  // saved in the new layout by setup()
+  }
+
+  Serial.println("No saved settings, using defaults");
 }
 
 void saveSettings() {
@@ -82,6 +153,9 @@ void saveSettings() {
   s.schedule  = schedule;
   s.globalOn  = globalOn == HIGH;
   s.globalOff = globalOff == HIGH;
+  s.relayPin  = relayPin;
+  s.relayActiveHigh = relayActiveHigh;
+  strlcpy(s.deviceName, deviceName, NAME_SIZE);
   s.checksum  = settingsChecksum(s);
 
   // Only write when something changed: flash wears out after ~10,000-100,000 writes
@@ -100,7 +174,7 @@ void saveSettings() {
 // The page reads the live state from /api/state as JSON.
 const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Irrigation</title><link rel="icon" href="https://upload.wikimedia.org/wikipedia/commons/1/1c/Circle-icons-water.svg">
+<title>Irrigation ESP</title><link rel="icon" href="https://upload.wikimedia.org/wikipedia/commons/1/1c/Circle-icons-water.svg">
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
 tailwind.config={darkMode:'class'};
@@ -113,14 +187,27 @@ applyTheme();dq.addEventListener('change',applyTheme);
 <body class="bg-slate-100 text-slate-800 min-h-screen dark:bg-slate-950 dark:text-slate-100 dark:[color-scheme:dark]">
 <main class="max-w-4xl mx-auto p-4 sm:p-6 space-y-4">
 <header class="flex items-center justify-between gap-2">
-<h1 class="text-xl sm:text-2xl font-bold">Irrigation System 3000</h1>
-<div class="flex items-center gap-2">
-<span id="clock" class="text-sm text-slate-500 dark:text-slate-400 tabular-nums">--:--</span>
+<h1 id="title" class="text-xl sm:text-2xl font-bold truncate"></h1>
+<div class="flex items-center gap-1 shrink-0">
+<span id="clock" class="text-sm text-slate-500 dark:text-slate-400 tabular-nums mr-1">--:--</span>
+<button id="cfgBtn" type="button" aria-label="Device settings" title="Device settings" class="rounded-lg p-2 text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800">
+<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+</button>
 <button id="theme" type="button" aria-label="Toggle dark mode" title="Toggle dark mode" class="rounded-lg p-2 text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800">
 <svg class="h-5 w-5 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
 <svg class="hidden h-5 w-5 dark:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
 </button></div></header>
 <p id="err" class="hidden rounded-xl bg-red-50 text-red-700 text-sm p-3 dark:bg-red-950 dark:text-red-300"></p>
+<form id="cfg" class="hidden bg-white rounded-2xl shadow-sm p-5 space-y-4 dark:bg-slate-900">
+<h2 class="font-semibold">Device settings</h2>
+<div class="grid gap-4 sm:grid-cols-2">
+<label class="text-sm text-slate-600 dark:text-slate-400">Device name<input id="cfgName" type="text" maxlength="31" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100"></label>
+<label class="text-sm text-slate-600 dark:text-slate-400">Relay pin<select id="cfgPin" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100"></select></label></div>
+<label class="flex items-center gap-3 text-sm"><input id="cfgHigh" type="checkbox" class="h-4 w-4 accent-sky-600">Relay turns on when the pin is HIGH</label>
+<p class="text-xs text-slate-500 dark:text-slate-400">Leave it unchecked for relay modules that switch on with a LOW signal (most common).</p>
+<div class="flex items-center gap-3"><button class="rounded-xl bg-sky-600 text-white px-5 py-2.5 font-medium hover:bg-sky-700">Save settings</button>
+<button id="cfgCancel" type="button" class="rounded-xl px-4 py-2.5 font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Cancel</button></div>
+</form>
 <div class="grid gap-4 md:grid-cols-2">
 <section class="bg-white rounded-2xl shadow-sm p-5 space-y-5 dark:bg-slate-900">
 <div class="flex items-center gap-3"><span id="dot" class="h-3 w-3 shrink-0 rounded-full bg-slate-300 dark:bg-slate-600"></span>
@@ -146,7 +233,18 @@ function paint(b){b.className='aspect-square rounded-lg text-sm font-semibold '+
 N.forEach((d,i)=>{const b=document.createElement('button');b.type='button';b.textContent=d;b.dataset.on='0';
 b.onclick=()=>{b.dataset.on=b.dataset.on=='1'?'0':'1';paint(b);dirty=1};paint(b);days.append(b)});
 $('start').oninput=$('end').oninput=()=>dirty=1;
+let last={};
+// Relay pin choices (board label, GPIO number): only the pins the firmware accepts
+[['D1',5],['D2',4],['D5',14],['D6',12],['D7',13]].forEach(([d,g])=>{
+const o=document.createElement('option');o.value=g;o.textContent=d+' (GPIO'+g+')';$('cfgPin').append(o)});
+function openCfg(){$('cfgName').value=last.name||'';$('cfgPin').value=last.pin;$('cfgHigh').checked=!!last.activeHigh;$('cfg').classList.remove('hidden');$('cfgName').focus()}
+$('cfgBtn').onclick=()=>$('cfg').classList.contains('hidden')?openCfg():$('cfg').classList.add('hidden');
+$('cfgCancel').onclick=()=>$('cfg').classList.add('hidden');
+$('cfg').onsubmit=async e=>{e.preventDefault();
+const q=new URLSearchParams({name:$('cfgName').value,pin:$('cfgPin').value,activeHigh:$('cfgHigh').checked?1:0});
+if(await call('/config?'+q))$('cfg').classList.add('hidden')};
 function render(s){
+last=s;$('title').textContent=s.name;document.title=s.name;
 $('clock').textContent=s.time;
 $('relay').textContent=s.relay?'Watering':'Not watering';
 $('dot').className='h-3 w-3 shrink-0 rounded-full '+(s.relay?'bg-emerald-500 animate-pulse':'bg-slate-300 dark:bg-slate-600');
@@ -203,9 +301,25 @@ bool shouldWater() {
   return isScheduledDay && isWithinTime;
 }
 
+// Pin level that turns the relay on or off, depending on the relay module
+uint8_t relayLevel(bool on) {
+  return on == relayActiveHigh ? HIGH : LOW;
+}
+
 void updateRelay() {
-  RELAY_state = shouldWater() ? LOW : HIGH;  // relay is active LOW
-  digitalWrite(RELAY_PIN, RELAY_state);
+  relayOn = shouldWater();
+  digitalWrite(relayPin, relayLevel(relayOn));
+}
+
+// Switch the relay to another pin: release the old one, start the new one switched off
+void setRelayPin(uint8_t pin) {
+  if (pin != relayPin) {
+    digitalWrite(relayPin, relayLevel(false));
+    pinMode(relayPin, INPUT);
+    relayPin = pin;
+  }
+  digitalWrite(relayPin, relayLevel(false));
+  pinMode(relayPin, OUTPUT);
 }
 
 void getNextRunTime(char *buf, size_t len) {
@@ -236,17 +350,19 @@ void sendState() {
   getNextRunTime(next, sizeof(next));
   const char *mode = globalOn ? "on" : globalOff ? "off" : "auto";
 
-  char json[256];
+  char json[384];
   snprintf(json, sizeof(json),
     "{\"mode\":\"%s\",\"relay\":%s,\"paused\":%ld,"
     "\"days\":[%d,%d,%d,%d,%d,%d,%d],"
     "\"start\":\"%02d:%02d\",\"end\":\"%02d:%02d\","
-    "\"time\":\"%02d:%02d\",\"next\":\"%s\"}",
-    mode, RELAY_state == LOW ? "true" : "false", pauseRemainingMs() / 1000,
+    "\"time\":\"%02d:%02d\",\"next\":\"%s\","
+    "\"name\":\"%s\",\"pin\":%d,\"activeHigh\":%s}",
+    mode, relayOn ? "true" : "false", pauseRemainingMs() / 1000,
     schedule.days[0], schedule.days[1], schedule.days[2], schedule.days[3],
     schedule.days[4], schedule.days[5], schedule.days[6],
     schedule.startHour, schedule.startMinute, schedule.endHour, schedule.endMinute,
-    rtc.getHour(true), rtc.getMinute(), next);
+    rtc.getHour(true), rtc.getMinute(), next,
+    deviceName, relayPin, relayActiveHigh ? "true" : "false");
   server.send(200, "application/json", json);
 }
 
@@ -254,11 +370,11 @@ void setup() {
   Serial.begin(115200);
   digitalWrite(LED_BUILTIN, LOW);
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(RELAY_PIN, RELAY_state);
-  pinMode(RELAY_PIN, OUTPUT);
 
   EEPROM.begin(sizeof(Settings));
   loadSettings();
+  saveSettings();          // stores migrated or default settings in the current layout
+  setRelayPin(relayPin);   // relay starts switched off on the saved pin
 
   Serial.println("Connecting to Wifi");
   WiFi.begin(ssid, password);
@@ -325,6 +441,21 @@ void setup() {
       if (validTime(h, m)) { schedule.endHour = h; schedule.endMinute = m; }
     }
 
+    saveSettings();
+    sendState();
+  });
+
+  // Device settings: /config?name=Garden&pin=13&activeHigh=0 (every argument is optional)
+  server.on("/config", HTTP_GET, []() {
+    if (server.hasArg("name")) setDeviceName(server.arg("name"));
+    if (server.hasArg("pin")) {
+      int pin = server.arg("pin").toInt();
+      if (validRelayPin(pin)) setRelayPin(pin);
+    }
+    if (server.hasArg("activeHigh")) {
+      String v = server.arg("activeHigh");
+      relayActiveHigh = v == "1" || v == "true";
+    }
     saveSettings();
     sendState();
   });

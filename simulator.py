@@ -21,6 +21,9 @@ from urllib.parse import parse_qs, urlparse
 
 SKETCH = Path(__file__).with_name("ESP8266-SmartIrrigationSystem.ino")
 DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+DEFAULT_NAME = "Irrigation ESP"
+RELAY_PINS = {5, 4, 14, 12, 13}  # D1, D2, D5, D6, D7 as GPIO numbers, like the firmware
+NAME_SIZE = 32
 
 state = {
     "global_on": False,
@@ -29,7 +32,18 @@ state = {
     "days": [False] * 7,
     "start": (0, 0),
     "end": (0, 0),
+    "name": DEFAULT_NAME,
+    "pin": 13,  # D7
+    "active_high": False,
 }
+
+
+def clean_name(value):
+    """Same rules as setDeviceName() in the firmware."""
+    name = "".join(c for c in value if ord(c) >= 0x20 and c not in '"\\').strip()
+    while len(name.encode()) > NAME_SIZE - 1:
+        name = name[:-1]
+    return name or DEFAULT_NAME
 
 
 def load_page():
@@ -81,6 +95,9 @@ def state_json():
         "end": "%02d:%02d" % state["end"],
         "time": f"{h:02d}:{m:02d}",
         "next": next_run(),
+        "name": state["name"],
+        "pin": state["pin"],
+        "activeHigh": state["active_high"],
     }
 
 
@@ -114,6 +131,14 @@ class Handler(BaseHTTPRequestHandler):
                 parsed = parse_time(args.get(key, [""])[0])
                 if parsed:
                     state[field] = parsed
+        elif url.path == "/config":
+            if "name" in args:
+                state["name"] = clean_name(args["name"][0])
+            pin = args.get("pin", [""])[0]
+            if pin.isdigit() and int(pin) in RELAY_PINS:
+                state["pin"] = int(pin)
+            if "activeHigh" in args:
+                state["active_high"] = args["activeHigh"][0] in ("1", "true")
         elif url.path != "/api/state":
             return self.reply(404, "text/plain", b"Not found")
 
