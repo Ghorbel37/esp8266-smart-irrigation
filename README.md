@@ -10,13 +10,21 @@ A WiFi-enabled smart irrigation controller built on the ESP8266 microcontroller.
 - View next scheduled run time at a glance
 
 🌐 **Web Interface**
-- Clean, accessible web UI for remote control
-- Real-time status monitoring
+- Responsive page that works on phones (one column) and computers (two columns)
+- Status refreshes every 5 seconds: watering or not, current mode, pause time left, next run
 - Manual override controls (Force ON/OFF)
 - Schedule configuration via web form
 
+💾 **Settings Survive Restarts**
+- The schedule and the mode are saved in flash (EEPROM emulation) and restored at boot
+- Flash is only written when a value actually changes
+- The 5-minute pause is not saved
+
+🔌 **JSON API**
+- Every action returns the controller's state as JSON, so it can be scripted or used by other apps
+
 ⏰ **Time Management**
-- NTP (Network Time Protocol) synchronization for accurate timekeeping
+- NTP (Network Time Protocol) synchronization at boot for accurate timekeeping
 - Configurable timezone and daylight saving offset
 
 🎛️ **Flexible Control Modes**
@@ -45,8 +53,11 @@ A WiFi-enabled smart irrigation controller built on the ESP8266 microcontroller.
 ### Arduino Libraries
 - `ESP8266WiFi` - WiFi connectivity
 - `ESP8266WebServer` - Web server functionality
+- `EEPROM` - Saving settings to flash (included with the ESP8266 core)
 - `ESP32Time` - RTC (Real-Time Clock) management
 - `time.h` - Time utilities
+
+The web page uses Tailwind CSS from its CDN, so the browser opening it needs internet access for the styling.
 
 ### Installation
 Install the required libraries through the Arduino Library Manager or manually download them.
@@ -58,8 +69,8 @@ Install the required libraries through the Arduino Library Manager or manually d
 Open `ESP8266-SmartIrrigationSystem.ino` and modify the following settings:
 
 ```cpp
-const char *ssid = "your-wifi-ssid";         // Your WiFi network name
-const char *password = "your-wifi-password"; // Your WiFi password
+const char *ssid = "REPLACE_WITH_SSID";         // Your WiFi network name
+const char *password = "REPLACE_WITH_PASSWORD"; // Your WiFi password
 
 const long gmtOffset_sec = 3600;             // GMT offset in seconds (3600 = GMT+1)
 const int daylightOffset_sec = 0;            // Daylight saving offset (0 or 3600)
@@ -93,7 +104,7 @@ Open a web browser and navigate to the IP address shown in the Serial Monitor (e
 2. Select the days of the week you want watering to occur
 3. Set the start time (when irrigation begins)
 4. Set the end time (when irrigation stops)
-5. Click "Set Schedule"
+5. Click "Save schedule"
 
 **Example Schedule:**
 - Days: Monday, Wednesday, Friday
@@ -104,17 +115,38 @@ This will water your garden for 30 minutes on Monday, Wednesday, and Friday morn
 
 ### Manual Control
 
-- **Turn ON**: Immediately activates irrigation, ignoring the schedule
-- **Turn OFF**: Immediately deactivates irrigation, ignoring the schedule
-- **Turn with Timer**: Returns to automatic schedule mode
-- **Disable for 5 Minutes**: Temporarily pauses all irrigation for maintenance
+- **Force ON**: Immediately activates irrigation, ignoring the schedule
+- **Force OFF**: Immediately deactivates irrigation, ignoring the schedule
+- **Schedule**: Returns to automatic schedule mode
+- **Pause 5 minutes**: Temporarily pauses scheduled irrigation for maintenance
 
-### Time Synchronization
+### JSON API
 
-Click "Fetch NTP Time and Calculate Difference" to:
-- Update the system time from NTP servers
-- View the difference between RTC and NTP time
-- Ensure accurate scheduling
+| Endpoint | Action |
+|---|---|
+| `GET /api/state` | Current state |
+| `GET /relay1/on` | Force ON |
+| `GET /relay1/off` | Force OFF |
+| `GET /relay1/clear` | Back to the schedule |
+| `GET /disable` | Pause for 5 minutes |
+| `GET /setSchedule?day=1&day=3&startTime=06:00&endTime=06:30` | Save the schedule (days: 0 = Sunday … 6 = Saturday) |
+
+Every endpoint returns the same JSON:
+
+```json
+{"mode": "auto", "relay": false, "paused": 0, "days": [0,1,0,1,0,0,0], "start": "06:00", "end": "06:30", "time": "14:05", "next": "tomorrow at 06:00"}
+```
+
+## Try It Without the Board
+
+`simulator.py` serves the same web page from the `.ino` file and fakes the controller using your computer's clock. It only needs Python 3:
+
+```bash
+python simulator.py        # then open http://localhost:8000
+python simulator.py 8080   # use another port
+```
+
+You can open it from your phone too at `http://<your-pc-ip>:8000` (same Wi-Fi). Nothing is saved: restarting the simulator resets the settings.
 
 ## Wiring Diagram
 
