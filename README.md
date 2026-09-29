@@ -21,9 +21,9 @@ A WiFi-enabled smart irrigation controller built on the ESP8266 microcontroller.
 - Changes apply right away, without restarting the board
 
 💾 **Settings Survive Restarts**
-- The schedule, the mode and the device settings are saved in flash (EEPROM emulation) and restored at boot
+- The schedule, Force OFF and the device settings are saved in flash (EEPROM emulation) and restored at boot
 - Flash is only written when a value actually changes
-- The 5-minute pause is not saved
+- Force ON and the 5-minute pause are timed, so they are not saved: after a restart the board follows the schedule
 
 🔌 **JSON API**
 - Every action returns the controller's state as JSON, so it can be scripted or used by other apps
@@ -35,7 +35,7 @@ A WiFi-enabled smart irrigation controller built on the ESP8266 microcontroller.
 
 🎛️ **Flexible Control Modes**
 - **Automatic Mode**: Follow the configured schedule
-- **Force ON**: Override schedule to turn irrigation ON
+- **Force ON**: Override schedule to turn irrigation ON, then go back to the schedule after 60 minutes (or the duration you set)
 - **Force OFF**: Override schedule to turn irrigation OFF
 - **Temporary Disable**: Pause for 5 minutes (useful during maintenance)
 
@@ -125,7 +125,7 @@ A run can cross midnight: with Monday selected, 23:00 → 01:00 waters from Mond
 
 ### Manual Control
 
-- **Force ON**: Immediately activates irrigation, ignoring the schedule
+- **Force ON**: Immediately activates irrigation, ignoring the schedule. It turns off by itself after the time set in "Force ON turns off after … min" (60 by default, up to 1440 = 24 hours). Each browser remembers the value you pick; the board doesn't store it
 - **Force OFF**: Immediately deactivates irrigation, ignoring the schedule
 - **Schedule**: Returns to automatic schedule mode
 - **Pause 5 minutes**: Temporarily pauses scheduled irrigation for maintenance
@@ -135,7 +135,7 @@ A run can cross midnight: with Monday selected, 23:00 → 01:00 waters from Mond
 | Endpoint | Action |
 |---|---|
 | `GET /api/state` | Current state |
-| `POST /relay1/on` | Force ON |
+| `POST /relay1/on` with `minutes=60` | Force ON, back to the schedule after `minutes` (optional: 60 by default, at most 1440) |
 | `POST /relay1/off` | Force OFF |
 | `POST /relay1/clear` | Back to the schedule |
 | `POST /disable` | Pause for 5 minutes |
@@ -145,14 +145,14 @@ A run can cross midnight: with Monday selected, 23:00 → 01:00 waters from Mond
 Actions only accept POST, with the arguments form-encoded in the body, so opening a link can't switch the water on. For example:
 
 ```bash
-curl -X POST http://192.168.1.100/relay1/on
+curl -d minutes=30 http://192.168.1.100/relay1/on
 curl -d day=1 -d day=3 -d startTime=06:00 -d endTime=06:30 http://192.168.1.100/setSchedule
 ```
 
-Every endpoint returns the same JSON:
+Every endpoint returns the same JSON (`paused` and `onLeft` are the seconds left in the pause and in Force ON):
 
 ```json
-{"mode": "auto", "relay": false, "paused": 0, "days": [0,1,0,1,0,0,0], "start": "06:00", "end": "06:30", "time": "14:05", "next": "tomorrow at 06:00", "name": "Irrigation ESP", "pin": 13, "activeHigh": false}
+{"mode": "auto", "relay": false, "paused": 0, "onLeft": 0, "days": [0,1,0,1,0,0,0], "start": "06:00", "end": "06:30", "time": "14:05", "next": "tomorrow at 06:00", "name": "Irrigation ESP", "pin": 13, "activeHigh": false}
 ```
 
 ## Try It Without the Board

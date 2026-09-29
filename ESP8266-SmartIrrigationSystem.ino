@@ -9,6 +9,8 @@
 #define DEFAULT_ACTIVE_HIGH false                     // false: the relay turns on when the pin is LOW
 #define DEFAULT_DEVICE_NAME "Irrigation ESP"          // Shown at the top of the page and in the browser tab
 #define NAME_SIZE 32                                  // Including the terminating zero
+#define DEFAULT_ON_MINUTES 60                         // Force ON goes back to the schedule after this, unless the page sends another duration
+#define MAX_ON_MINUTES 1440                           // Longest Force ON: 24 hours
 
 // Pins allowed for the relay. D0, D3, D4 and D8 are left out on purpose: they change level
 // during boot (the relay could click) or decide how the board boots, and D0/D4 drive the built-in LEDs.
@@ -30,6 +32,7 @@ bool relayActiveHigh = DEFAULT_ACTIVE_HIGH;
 char deviceName[NAME_SIZE] = DEFAULT_DEVICE_NAME;
 bool relayOn = false;
 unsigned long disableUntil = 0; // Timestamp until which the relay is disabled
+unsigned long forceOnUntil = 0; // Timestamp when Force ON goes back to the schedule
 int globalOn = LOW;
 int globalOff = LOW;
 
@@ -120,8 +123,7 @@ void loadSettings() {
   if (s.magic == SETTINGS_MAGIC && s.version == SETTINGS_VERSION &&
       s.checksum == settingsChecksum(s) && validSchedule(s.schedule)) {
     schedule  = s.schedule;
-    globalOn  = s.globalOn ? HIGH : LOW;
-    globalOff = s.globalOff ? HIGH : LOW;
+    globalOff = s.globalOff ? HIGH : LOW;  // Force ON is not restored: its timer doesn't survive a restart
     if (validRelayPin(s.relayPin)) relayPin = s.relayPin;
     relayActiveHigh = s.relayActiveHigh;
     s.deviceName[NAME_SIZE - 1] = '\0';
@@ -136,7 +138,6 @@ void loadSettings() {
   if (v1.magic == SETTINGS_MAGIC && v1.version == 1 &&
       v1.checksum == xorChecksum(&v1, offsetof(SettingsV1, checksum)) && validSchedule(v1.schedule)) {
     schedule  = v1.schedule;
-    globalOn  = v1.globalOn ? HIGH : LOW;
     globalOff = v1.globalOff ? HIGH : LOW;
     Serial.println("Settings migrated from version 1");
     return;  // saved in the new layout by setup()
@@ -151,7 +152,7 @@ void saveSettings() {
   s.magic     = SETTINGS_MAGIC;
   s.version   = SETTINGS_VERSION;
   s.schedule  = schedule;
-  s.globalOn  = globalOn == HIGH;
+  s.globalOn  = 0;  // Force ON is timed and not kept across restarts, so pressing it doesn't write flash
   s.globalOff = globalOff == HIGH;
   s.relayPin  = relayPin;
   s.relayActiveHigh = relayActiveHigh;
@@ -214,7 +215,8 @@ applyTheme();dq.addEventListener('change',applyTheme);
 <div><p id="relay" class="text-lg font-semibold">Loading...</p><p id="next" class="text-sm text-slate-500 dark:text-slate-400"></p></div></div>
 <div><p class="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">Mode</p>
 <div class="grid grid-cols-3 gap-2">
-<button data-m="on">Force ON</button><button data-m="clear">Schedule</button><button data-m="off">Force OFF</button></div></div>
+<button data-m="on">Force ON</button><button data-m="clear">Schedule</button><button data-m="off">Force OFF</button></div>
+<label class="mt-3 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">Force ON turns off after<input id="onMin" type="number" min="1" max="1440" value="60" required class="w-20 rounded-lg border border-slate-300 px-2 py-1 text-slate-800 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100">min</label></div>
 <button id="pause" class="w-full rounded-xl border border-slate-300 py-2.5 font-medium hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">Pause 5 minutes</button>
 </section>
 <form id="sched" class="bg-white rounded-2xl shadow-sm p-5 space-y-5 dark:bg-slate-900">
@@ -249,7 +251,7 @@ $('clock').textContent=s.time;
 $('relay').textContent=s.relay?'Watering':'Not watering';
 $('dot').className='h-3 w-3 shrink-0 rounded-full '+(s.relay?'bg-emerald-500 animate-pulse':'bg-slate-300 dark:bg-slate-600');
 const m=Math.ceil(s.paused/60);
-$('next').textContent=s.mode=='on'?'Forced on':s.mode=='off'?'Forced off':s.paused>0?'Paused, '+m+' min left':'Next run: '+s.next;
+$('next').textContent=s.mode=='on'?'Forced on, '+Math.ceil(s.onLeft/60)+' min left':s.mode=='off'?'Forced off':s.paused>0?'Paused, '+m+' min left':'Next run: '+s.next;
 document.querySelectorAll('[data-m]').forEach(b=>{const a=b.dataset.m==(s.mode=='auto'?'clear':s.mode);
 b.className='rounded-xl py-2.5 text-sm font-medium '+(a?'bg-slate-900 text-white dark:bg-sky-600':'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700')});
 $('pause').textContent=s.paused>0?'Paused ('+m+' min left)':'Pause 5 minutes';
@@ -257,7 +259,12 @@ if(!dirty){[...days.children].forEach((b,i)=>{b.dataset.on=s.days[i]?'1':'0';pai
 // Actions are sent as POST (a GET could be triggered by a link preview or another website)
 async function call(u,q){try{const r=await fetch(u,q&&{method:'POST',body:q});if(!r.ok)throw 0;const s=await r.json();$('err').classList.add('hidden');render(s);return s}
 catch(e){$('err').textContent='Could not reach the controller. Check that it is powered and on Wi-Fi.';$('err').classList.remove('hidden')}}
-document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>call('/relay1/'+b.dataset.m,new URLSearchParams()));
+// Force ON duration: remembered by this browser only and sent with each Force ON
+try{if(localStorage.onMin)$('onMin').value=localStorage.onMin}catch(e){}
+$('onMin').onchange=()=>{try{localStorage.onMin=$('onMin').value}catch(e){}};
+document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const on=b.dataset.m=='on';
+if(on&&!$('onMin').reportValidity())return;
+call('/relay1/'+b.dataset.m,new URLSearchParams(on?{minutes:$('onMin').value}:{}))});
 $('pause').onclick=()=>call('/disable',new URLSearchParams());
 // Toggle the theme; picking the same theme as the device goes back to following the device
 $('theme').onclick=()=>{const d=!document.documentElement.classList.contains('dark');
@@ -294,6 +301,12 @@ bool clockSet() {
   return time(nullptr) > 1600000000;  // any date after Sept 2020
 }
 
+// Milliseconds left before Force ON goes back to the schedule
+long forceOnRemainingMs() {
+  long left = (long)(forceOnUntil - millis());
+  return left > 0 ? left : 0;
+}
+
 // Decide whether the relay should be on right now
 bool shouldWater() {
   if (globalOn) return true;
@@ -320,6 +333,7 @@ uint8_t relayLevel(bool on) {
 }
 
 void updateRelay() {
+  if (globalOn && forceOnRemainingMs() == 0) globalOn = LOW;  // Force ON ran out: back to the schedule
   relayOn = shouldWater();
   digitalWrite(relayPin, relayLevel(relayOn));
 }
@@ -369,12 +383,12 @@ void sendState() {
 
   char json[384];
   snprintf(json, sizeof(json),
-    "{\"mode\":\"%s\",\"relay\":%s,\"paused\":%ld,"
+    "{\"mode\":\"%s\",\"relay\":%s,\"paused\":%ld,\"onLeft\":%ld,"
     "\"days\":[%d,%d,%d,%d,%d,%d,%d],"
     "\"start\":\"%02d:%02d\",\"end\":\"%02d:%02d\","
     "\"time\":\"%02d:%02d\",\"next\":\"%s\","
     "\"name\":\"%s\",\"pin\":%d,\"activeHigh\":%s}",
-    mode, relayOn ? "true" : "false", pauseRemainingMs() / 1000,
+    mode, relayOn ? "true" : "false", pauseRemainingMs() / 1000, globalOn ? forceOnRemainingMs() / 1000 : 0L,
     schedule.days[0], schedule.days[1], schedule.days[2], schedule.days[3],
     schedule.days[4], schedule.days[5], schedule.days[6],
     schedule.startHour, schedule.startMinute, schedule.endHour, schedule.endMinute,
@@ -413,10 +427,15 @@ void setup() {
   server.on("/api/state", HTTP_GET, sendState);
 
   // Actions only accept POST, with form-encoded arguments in the body
+  // Force ON for minutes=N (default 60, at most 24 h), then back to the schedule
   server.on("/relay1/on", HTTP_POST, []() {
+    long minutes = server.hasArg("minutes") ? server.arg("minutes").toInt() : DEFAULT_ON_MINUTES;
+    if (minutes < 1) minutes = DEFAULT_ON_MINUTES;
+    if (minutes > MAX_ON_MINUTES) minutes = MAX_ON_MINUTES;
+    forceOnUntil = millis() + minutes * 60UL * 1000;
     globalOff = LOW;
     globalOn = HIGH;
-    saveSettings();
+    saveSettings();  // only writes when leaving Force OFF
     sendState();
   });
 

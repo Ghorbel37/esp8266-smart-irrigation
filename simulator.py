@@ -24,9 +24,12 @@ DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "
 DEFAULT_NAME = "Irrigation ESP"
 RELAY_PINS = {5, 4, 14, 12, 13}  # D1, D2, D5, D6, D7 as GPIO numbers, like the firmware
 NAME_SIZE = 32
+DEFAULT_ON_MINUTES = 60
+MAX_ON_MINUTES = 1440
 
 state = {
     "global_on": False,
+    "on_until": 0.0,
     "global_off": False,
     "pause_until": 0.0,
     "days": [False] * 7,
@@ -62,8 +65,16 @@ def paused_seconds():
     return max(0, int(state["pause_until"] - time.time()))
 
 
+def on_left():
+    """Seconds before Force ON goes back to the schedule (turns it off when it runs out)."""
+    left = max(0, int(state["on_until"] - time.time()))
+    if state["global_on"] and left == 0:
+        state["global_on"] = False
+    return left if state["global_on"] else 0
+
+
 def should_water():
-    if state["global_on"]:
+    if on_left():
         return True
     if state["global_off"] or paused_seconds() > 0:
         return False
@@ -92,11 +103,13 @@ def next_run():
 
 def state_json():
     h, m, _ = now()
+    on_seconds = on_left()
     mode = "on" if state["global_on"] else "off" if state["global_off"] else "auto"
     return {
         "mode": mode,
         "relay": should_water(),
         "paused": paused_seconds(),
+        "onLeft": on_seconds,
         "days": [int(d) for d in state["days"]],
         "start": "%02d:%02d" % state["start"],
         "end": "%02d:%02d" % state["end"],
@@ -131,7 +144,10 @@ class Handler(BaseHTTPRequestHandler):
         args = parse_qs(self.rfile.read(length).decode())  # form-encoded body
 
         if path == "/relay1/on":
-            state.update(global_on=True, global_off=False)
+            minutes = args.get("minutes", [""])[0]
+            minutes = int(minutes) if minutes.isdigit() and int(minutes) >= 1 else DEFAULT_ON_MINUTES
+            minutes = min(minutes, MAX_ON_MINUTES)
+            state.update(global_on=True, global_off=False, on_until=time.time() + minutes * 60)
         elif path == "/relay1/off":
             state.update(global_on=False, global_off=True)
         elif path == "/relay1/clear":
