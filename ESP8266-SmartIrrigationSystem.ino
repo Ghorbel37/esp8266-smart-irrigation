@@ -288,11 +288,18 @@ long pauseRemainingMs() {
   return left > 0 ? left : 0;
 }
 
+// True once NTP has set the clock. Until then it counts from 1 Jan 1970, which would
+// run the schedule at the wrong time. configTime() keeps re-syncing every hour after that.
+bool clockSet() {
+  return time(nullptr) > 1600000000;  // any date after Sept 2020
+}
+
 // Decide whether the relay should be on right now
 bool shouldWater() {
   if (globalOn) return true;
   if (globalOff) return false;
   if (pauseRemainingMs() > 0) return false;
+  if (!clockSet()) return false;
 
   int now   = rtc.getHour(true) * 60 + rtc.getMinute();
   int start = schedule.startHour * 60 + schedule.startMinute;
@@ -329,6 +336,10 @@ void setRelayPin(uint8_t pin) {
 }
 
 void getNextRunTime(char *buf, size_t len) {
+  if (!clockSet()) {
+    snprintf(buf, len, "waiting for the clock");
+    return;
+  }
   int h = rtc.getHour(true);
   int m = rtc.getMinute();
   int today = rtc.getDayofWeek();

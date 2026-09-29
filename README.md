@@ -29,7 +29,8 @@ A WiFi-enabled smart irrigation controller built on the ESP8266 microcontroller.
 - Every action returns the controller's state as JSON, so it can be scripted or used by other apps
 
 ⏰ **Time Management**
-- NTP (Network Time Protocol) synchronization at boot for accurate timekeeping
+- NTP (Network Time Protocol) synchronization at boot, then again every hour (ESP8266 core default)
+- The schedule waits until the clock is set, so a board that boots without internet doesn't water at a wrong time (Force ON still works)
 - Configurable timezone and daylight saving offset
 
 🎛️ **Flexible Control Modes**
