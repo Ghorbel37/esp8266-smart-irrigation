@@ -100,7 +100,7 @@ void saveSettings() {
 // The page reads the live state from /api/state as JSON.
 const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Irrigation</title><link rel="icon" href="data:,">
+<title>Irrigation</title><link rel="icon" href="https://upload.wikimedia.org/wikipedia/commons/1/1c/Circle-icons-water.svg">
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
 tailwind.config={darkMode:'class'};
