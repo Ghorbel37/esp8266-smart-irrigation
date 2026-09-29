@@ -101,52 +101,69 @@ void saveSettings() {
 const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Irrigation</title><link rel="icon" href="data:,">
-<script src="https://cdn.tailwindcss.com"></script></head>
-<body class="bg-slate-100 text-slate-800 min-h-screen">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config={darkMode:'class'};
+// Follow the device theme unless the user picked one with the toggle (remembered in localStorage)
+const dq=matchMedia('(prefers-color-scheme: dark)');
+function saved(){try{return localStorage.theme}catch(e){}}
+function applyTheme(){const t=saved();document.documentElement.classList.toggle('dark',t?t=='dark':dq.matches)}
+applyTheme();dq.addEventListener('change',applyTheme);
+</script></head>
+<body class="bg-slate-100 text-slate-800 min-h-screen dark:bg-slate-950 dark:text-slate-100 dark:[color-scheme:dark]">
 <main class="max-w-4xl mx-auto p-4 sm:p-6 space-y-4">
 <header class="flex items-center justify-between gap-2">
 <h1 class="text-xl sm:text-2xl font-bold">Irrigation System 3000</h1>
-<span id="clock" class="text-sm text-slate-500 tabular-nums">--:--</span></header>
-<p id="err" class="hidden rounded-xl bg-red-50 text-red-700 text-sm p-3"></p>
+<div class="flex items-center gap-2">
+<span id="clock" class="text-sm text-slate-500 dark:text-slate-400 tabular-nums">--:--</span>
+<button id="theme" type="button" aria-label="Toggle dark mode" title="Toggle dark mode" class="rounded-lg p-2 text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800">
+<svg class="h-5 w-5 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+<svg class="hidden h-5 w-5 dark:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+</button></div></header>
+<p id="err" class="hidden rounded-xl bg-red-50 text-red-700 text-sm p-3 dark:bg-red-950 dark:text-red-300"></p>
 <div class="grid gap-4 md:grid-cols-2">
-<section class="bg-white rounded-2xl shadow-sm p-5 space-y-5">
-<div class="flex items-center gap-3"><span id="dot" class="h-3 w-3 shrink-0 rounded-full bg-slate-300"></span>
-<div><p id="relay" class="text-lg font-semibold">Loading...</p><p id="next" class="text-sm text-slate-500"></p></div></div>
-<div><p class="text-xs font-medium uppercase tracking-wide text-slate-500 mb-2">Mode</p>
+<section class="bg-white rounded-2xl shadow-sm p-5 space-y-5 dark:bg-slate-900">
+<div class="flex items-center gap-3"><span id="dot" class="h-3 w-3 shrink-0 rounded-full bg-slate-300 dark:bg-slate-600"></span>
+<div><p id="relay" class="text-lg font-semibold">Loading...</p><p id="next" class="text-sm text-slate-500 dark:text-slate-400"></p></div></div>
+<div><p class="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">Mode</p>
 <div class="grid grid-cols-3 gap-2">
 <button data-m="on">Force ON</button><button data-m="clear">Schedule</button><button data-m="off">Force OFF</button></div></div>
-<button id="pause" class="w-full rounded-xl border border-slate-300 py-2.5 font-medium hover:bg-slate-50">Pause 5 minutes</button>
+<button id="pause" class="w-full rounded-xl border border-slate-300 py-2.5 font-medium hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">Pause 5 minutes</button>
 </section>
-<form id="sched" class="bg-white rounded-2xl shadow-sm p-5 space-y-5">
+<form id="sched" class="bg-white rounded-2xl shadow-sm p-5 space-y-5 dark:bg-slate-900">
 <h2 class="font-semibold">Watering schedule</h2>
 <div id="days" class="grid grid-cols-7 gap-1.5"></div>
 <div class="grid grid-cols-2 gap-3">
-<label class="text-sm text-slate-600">Start<input id="start" type="time" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800"></label>
-<label class="text-sm text-slate-600">End<input id="end" type="time" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800"></label></div>
+<label class="text-sm text-slate-600 dark:text-slate-400">Start<input id="start" type="time" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100"></label>
+<label class="text-sm text-slate-600 dark:text-slate-400">End<input id="end" type="time" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100"></label></div>
 <div class="flex items-center gap-3"><button class="rounded-xl bg-sky-600 text-white px-5 py-2.5 font-medium hover:bg-sky-700">Save schedule</button>
-<span id="saved" class="text-sm text-emerald-600"></span></div>
+<span id="saved" class="text-sm text-emerald-600 dark:text-emerald-400"></span></div>
 </form></div>
 </main>
 <script>
 const $=i=>document.getElementById(i),days=$('days'),N=['Su','Mo','Tu','We','Th','Fr','Sa'];let dirty=0;
-function paint(b){b.className='aspect-square rounded-lg text-sm font-semibold '+(b.dataset.on=='1'?'bg-sky-600 text-white':'bg-slate-100 text-slate-500 hover:bg-slate-200')}
+function paint(b){b.className='aspect-square rounded-lg text-sm font-semibold '+(b.dataset.on=='1'?'bg-sky-600 text-white':'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700')}
 N.forEach((d,i)=>{const b=document.createElement('button');b.type='button';b.textContent=d;b.dataset.on='0';
 b.onclick=()=>{b.dataset.on=b.dataset.on=='1'?'0':'1';paint(b);dirty=1};paint(b);days.append(b)});
 $('start').oninput=$('end').oninput=()=>dirty=1;
 function render(s){
 $('clock').textContent=s.time;
 $('relay').textContent=s.relay?'Watering':'Not watering';
-$('dot').className='h-3 w-3 shrink-0 rounded-full '+(s.relay?'bg-emerald-500 animate-pulse':'bg-slate-300');
+$('dot').className='h-3 w-3 shrink-0 rounded-full '+(s.relay?'bg-emerald-500 animate-pulse':'bg-slate-300 dark:bg-slate-600');
 const m=Math.ceil(s.paused/60);
 $('next').textContent=s.mode=='on'?'Forced on':s.mode=='off'?'Forced off':s.paused>0?'Paused, '+m+' min left':'Next run: '+s.next;
 document.querySelectorAll('[data-m]').forEach(b=>{const a=b.dataset.m==(s.mode=='auto'?'clear':s.mode);
-b.className='rounded-xl py-2.5 text-sm font-medium '+(a?'bg-slate-900 text-white':'bg-slate-100 hover:bg-slate-200')});
+b.className='rounded-xl py-2.5 text-sm font-medium '+(a?'bg-slate-900 text-white dark:bg-sky-600':'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700')});
 $('pause').textContent=s.paused>0?'Paused ('+m+' min left)':'Pause 5 minutes';
 if(!dirty){[...days.children].forEach((b,i)=>{b.dataset.on=s.days[i]?'1':'0';paint(b)});$('start').value=s.start;$('end').value=s.end}}
 async function call(u){try{const r=await fetch(u);if(!r.ok)throw 0;const s=await r.json();$('err').classList.add('hidden');render(s);return s}
 catch(e){$('err').textContent='Could not reach the controller. Check that it is powered and on Wi-Fi.';$('err').classList.remove('hidden')}}
 document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>call('/relay1/'+b.dataset.m));
 $('pause').onclick=()=>call('/disable');
+// Toggle the theme; picking the same theme as the device goes back to following the device
+$('theme').onclick=()=>{const d=!document.documentElement.classList.contains('dark');
+try{d==dq.matches?localStorage.removeItem('theme'):localStorage.theme=d?'dark':'light'}catch(e){}
+document.documentElement.classList.toggle('dark',d)};
 $('sched').onsubmit=async e=>{e.preventDefault();const q=new URLSearchParams();
 [...days.children].forEach((b,i)=>{if(b.dataset.on=='1')q.append('day',i)});
 q.append('startTime',$('start').value);q.append('endTime',$('end').value);
