@@ -1,6 +1,14 @@
 # ESP8266 Smart Irrigation System
 
-A WiFi-enabled smart irrigation controller built on the ESP8266 microcontroller. This system allows you to remotely control your irrigation system through a web interface, schedule watering times, and manage your garden or lawn watering automatically.
+A WiFi-enabled smart irrigation controller built on the ESP8266 microcontroller. This system allows you to remotely control your irrigation system through a responsive web interface, schedule watering times, and manage your garden or lawn watering automatically.
+
+<p align="center">
+  <img src="screenshots/phone-light.png" alt="Schedule mode, light theme" width="250">
+  &nbsp;
+  <img src="screenshots/phone-dark.png" alt="Force ON with 30 minutes left, dark theme" width="250">
+  &nbsp;
+  <img src="screenshots/phone-settings.png" alt="Device settings, dark theme" width="250">
+</p>
 
 ## Features
 
@@ -78,7 +86,27 @@ By default the relay is driven as **active LOW** (it turns on when the pin is LO
 The web page uses Tailwind CSS from its CDN, so the browser opening it needs internet access for the styling.
 
 ### Installation
-Install the required libraries through the Arduino Library Manager or manually download them.
+
+In the [Arduino IDE](https://www.arduino.cc/en/software) 2:
+
+1. **File > Preferences > Additional boards manager URLs**: add `https://arduino.esp8266.com/stable/package_esp8266com_index.json`
+2. **Tools > Board > Boards Manager**: install **esp8266** by ESP8266 Community (tested with 3.1.2)
+3. **Tools > Manage Libraries**: install **ESP32Time** by fbiego (tested with 2.0.6; it works on the ESP8266 too)
+
+`ESP8266WiFi`, `ESP8266WebServer` and `EEPROM` come with the esp8266 board package.
+
+With [arduino-cli](https://arduino.github.io/arduino-cli/) instead:
+
+```bash
+arduino-cli config add board_manager.additional_urls https://arduino.esp8266.com/stable/package_esp8266com_index.json
+arduino-cli core update-index
+arduino-cli core install esp8266:esp8266
+arduino-cli lib install ESP32Time
+arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 .
+arduino-cli upload --fqbn esp8266:esp8266:nodemcuv2 -p COM5 .   # your board's port
+```
+
+The sketch uses about 290 KB of flash (27%) and 30 KB of RAM (37%) on a NodeMCU.
 
 ## Getting Started
 
@@ -105,9 +133,10 @@ git clone https://github.com/Ghorbel37/esp8266-smart-irrigation.git
 If you use **Download ZIP** instead, rename the extracted folder from `esp8266-smart-irrigation-main` to `esp8266-smart-irrigation`. Otherwise the IDE offers to move the `.ino` into a new folder, `index_html.h` stays behind and the build fails.
 
 1. Open `esp8266-smart-irrigation.ino` in the Arduino IDE
-2. Connect your ESP8266 board to your computer
-3. Select the correct board and port
-4. Upload the sketch
+2. Connect your ESP8266 board to your computer with a USB **data** cable (some cables only charge)
+3. **Tools > Board > esp8266**: pick your board, e.g. **NodeMCU 1.0 (ESP-12E Module)** or **LOLIN(WEMOS) D1 R2 & mini**
+4. **Tools > Port**: pick the board's COM port (it appears when the board is plugged in)
+5. Click **Upload**
 
 ### 3. Find Your Device
 
@@ -219,6 +248,11 @@ Valve (-) ---------> Power Supply (-)
 ⚠️ **Warning**: Ensure your relay can handle the voltage and current requirements of your irrigation system. Use appropriate isolation and safety measures when working with mains voltage.
 
 ## Troubleshooting
+
+### Board Doesn't Appear in Tools > Port
+- Use a USB data cable: many cables only charge
+- Install the USB-serial driver for your board's chip (printed near the USB port): [CH340](https://www.wch-ic.com/downloads/CH341SER_EXE.html) on most clones, [CP2102](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers) on NodeMCU v1.0 boards
+- The board shows up in Windows Device Manager under **Ports (COM & LPT)**
 
 ### ESP8266 Won't Connect to WiFi
 - Verify SSID and password are correct
