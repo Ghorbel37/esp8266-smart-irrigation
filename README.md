@@ -30,6 +30,7 @@ A WiFi-enabled smart irrigation controller built on the ESP8266 microcontroller.
 
 💾 **Settings Survive Restarts**
 - The schedule, Force OFF and the device settings are saved in flash (EEPROM emulation) and restored at boot
+- They also survive uploading a new sketch (unless **Tools > Erase Flash** is set to "All Flash Contents")
 - Flash is only written when a value actually changes
 - Force ON and the 5-minute pause are timed, so they are not saved: after a restart the board follows the schedule
 

@@ -48,15 +48,17 @@ struct Schedule {
 Schedule schedule;
 
 // ---- Persistent settings (saved in flash via EEPROM emulation) ----
-// Bump SETTINGS_VERSION whenever the Settings layout changes, so old data is ignored.
+// Uploading a new sketch keeps them (unless Tools > Erase Flash is set to "All Flash Contents").
+// Bump SETTINGS_VERSION whenever the Settings layout changes: data saved with another layout is
+// then ignored and the defaults are used.
 #define SETTINGS_MAGIC   0x49525247  // "IRRG"
-#define SETTINGS_VERSION 2
+#define SETTINGS_VERSION 1
 
+// Force ON and the pause are timed and not saved: after a restart the board follows the schedule
 struct Settings {
   uint32_t magic;
   uint8_t  version;
   Schedule schedule;
-  uint8_t  globalOn;
   uint8_t  globalOff;
   uint8_t  relayPin;
   uint8_t  relayActiveHigh;
@@ -64,25 +66,11 @@ struct Settings {
   uint8_t  checksum;
 };
 
-// Layout saved by version 1 (before the device settings), read once to migrate
-struct SettingsV1 {
-  uint32_t magic;
-  uint8_t  version;
-  Schedule schedule;
-  uint8_t  globalOn;
-  uint8_t  globalOff;
-  uint8_t  checksum;
-};
-
-uint8_t xorChecksum(const void *data, size_t len) {
-  const uint8_t *p = (const uint8_t *)data;
-  uint8_t sum = 0;
-  for (size_t i = 0; i < len; i++) sum ^= p[i];
-  return sum;
-}
-
 uint8_t settingsChecksum(const Settings &s) {
-  return xorChecksum(&s, offsetof(Settings, checksum));
+  const uint8_t *p = (const uint8_t *)&s;
+  uint8_t sum = 0;
+  for (size_t i = 0; i < offsetof(Settings, checksum); i++) sum ^= p[i];
+  return sum;
 }
 
 bool validTime(int h, int m) {
@@ -123,24 +111,13 @@ void loadSettings() {
   if (s.magic == SETTINGS_MAGIC && s.version == SETTINGS_VERSION &&
       s.checksum == settingsChecksum(s) && validSchedule(s.schedule)) {
     schedule  = s.schedule;
-    globalOff = s.globalOff ? HIGH : LOW;  // Force ON is not restored: its timer doesn't survive a restart
+    globalOff = s.globalOff ? HIGH : LOW;
     if (validRelayPin(s.relayPin)) relayPin = s.relayPin;
     relayActiveHigh = s.relayActiveHigh;
     s.deviceName[NAME_SIZE - 1] = '\0';
     setDeviceName(String(s.deviceName));
     Serial.println("Settings loaded from flash");
     return;
-  }
-
-  // Settings saved by version 1: keep the schedule and mode, use defaults for the rest
-  SettingsV1 v1;
-  EEPROM.get(0, v1);
-  if (v1.magic == SETTINGS_MAGIC && v1.version == 1 &&
-      v1.checksum == xorChecksum(&v1, offsetof(SettingsV1, checksum)) && validSchedule(v1.schedule)) {
-    schedule  = v1.schedule;
-    globalOff = v1.globalOff ? HIGH : LOW;
-    Serial.println("Settings migrated from version 1");
-    return;  // saved in the new layout by setup()
   }
 
   Serial.println("No saved settings, using defaults");
@@ -152,7 +129,6 @@ void saveSettings() {
   s.magic     = SETTINGS_MAGIC;
   s.version   = SETTINGS_VERSION;
   s.schedule  = schedule;
-  s.globalOn  = 0;  // Force ON is timed and not kept across restarts, so pressing it doesn't write flash
   s.globalOff = globalOff == HIGH;
   s.relayPin  = relayPin;
   s.relayActiveHigh = relayActiveHigh;
@@ -302,7 +278,7 @@ void setup() {
 
   EEPROM.begin(sizeof(Settings));
   loadSettings();
-  saveSettings();          // stores migrated or default settings in the current layout
+  saveSettings();          // stores the defaults on the first start (no write otherwise)
   setRelayPin(relayPin);   // relay starts switched off on the saved pin
 
   Serial.println("Connecting to Wifi");
