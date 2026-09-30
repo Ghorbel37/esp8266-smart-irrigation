@@ -3,11 +3,11 @@
 A WiFi-enabled smart irrigation controller built on the ESP8266 microcontroller. This system allows you to remotely control your irrigation system through a responsive web interface, schedule watering times, and manage your garden or lawn watering automatically.
 
 <p align="center">
-  <img src="screenshots/phone-light.png" alt="Schedule mode, light theme" width="250">
+  <img src="docs/screenshots/phone-light.png" alt="Schedule mode, light theme" width="250">
   &nbsp;
-  <img src="screenshots/phone-dark.png" alt="Force ON with 30 minutes left, dark theme" width="250">
+  <img src="docs/screenshots/phone-dark.png" alt="Force ON with 30 minutes left, dark theme" width="250">
   &nbsp;
-  <img src="screenshots/phone-settings.png" alt="Device settings, dark theme" width="250">
+  <img src="docs/screenshots/phone-settings.png" alt="Device settings, dark theme" width="250">
 </p>
 
 ## Features
@@ -57,6 +57,8 @@ A WiFi-enabled smart irrigation controller built on the ESP8266 microcontroller.
 | `web/index.html` | Readable source of the web page |
 | `minify.py` | Builds `index_html.h` from `web/index.html` |
 | `simulator.py` | Runs the web page on your computer with a fake controller, no board needed |
+| `tests/` | Automated tests, run with `python tests/run_tests.py` |
+| `docs/` | [Testing guide](docs/TESTING.md) and screenshots |
 
 ## Hardware Requirements
 
@@ -210,7 +212,7 @@ Every endpoint returns the same JSON (`paused` and `onLeft` are the seconds left
 
 ## Try It Without the Board
 
-`simulator.py` serves the web page, minified exactly like on the board, and fakes the controller using your computer's clock. It only needs Python 3:
+`simulator.py` serves the web page, minified exactly like on the board, and fakes the controller using your computer's clock. It only needs Python 3.10+:
 
 ```bash
 python simulator.py        # then open http://localhost:8000
@@ -232,7 +234,16 @@ python minify.py           # web/index.html -> index_html.h
 python minify.py --check   # only check that index_html.h is up to date
 ```
 
-`minify.py` only needs Python 3.
+`minify.py` only needs Python 3.10+. Run `python tests/run_tests.py --browser` afterwards to check the page (see [Testing](#testing)).
+
+## Testing
+
+```bash
+python tests/run_tests.py          # minifier, simulator and firmware tests (about 2 seconds)
+python tests/run_tests.py --all    # + the page in a headless browser and a real ESP8266 build
+```
+
+The firmware tests compile the real sketch on your computer against fake Arduino libraries. [docs/TESTING.md](docs/TESTING.md) explains what each suite checks, what it needs (Python 3.10+, a C++ compiler, optionally Playwright and the Arduino tools), when to run what, and a checklist for testing on a real board.
 
 ## Wiring Diagram
 

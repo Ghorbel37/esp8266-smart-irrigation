@@ -10,7 +10,7 @@ It removes comments and the spaces and line breaks that are only there for reada
   except one space where two words would otherwise merge (like `const x`). Strings and regular
   expressions are kept as they are. Line breaks are removed too, so end statements with `;`.
 
-Only needs Python 3.
+Only needs Python 3.10+.
 """
 import re
 import sys
