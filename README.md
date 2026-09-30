@@ -157,7 +157,7 @@ Every endpoint returns the same JSON (`paused` and `onLeft` are the seconds left
 
 ## Try It Without the Board
 
-`simulator.py` serves the same web page from the `.ino` file and fakes the controller using your computer's clock. It only needs Python 3:
+`simulator.py` serves the web page, minified exactly like on the board, and fakes the controller using your computer's clock. It only needs Python 3:
 
 ```bash
 python simulator.py        # then open http://localhost:8000
@@ -165,6 +165,21 @@ python simulator.py 8080   # use another port
 ```
 
 You can open it from your phone too at `http://<your-pc-ip>:8000` (same Wi-Fi). Nothing is saved: restarting the simulator resets the settings.
+
+## Editing the Web Page
+
+The page's readable source is [`web/index.html`](web/index.html). The sketch doesn't use it directly: it includes `index_html.h`, a minified copy (comments, indentation and line breaks removed, about 27% smaller) that is stored in flash.
+
+1. Edit `web/index.html`. In its scripts, end every statement with `;`, since line breaks are removed.
+2. Check it with `python simulator.py`: the simulator minifies the page on every refresh, so changes show up right away.
+3. Rebuild the header and upload the sketch:
+
+```bash
+python minify.py           # web/index.html -> index_html.h
+python minify.py --check   # only check that index_html.h is up to date
+```
+
+`minify.py` only needs Python 3.
 
 ## Wiring Diagram
 

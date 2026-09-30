@@ -1,7 +1,8 @@
 """Try the irrigation web interface on your PC, without the ESP8266.
 
-Serves the same page that is stored in ESP8266-SmartIrrigationSystem.ino and fakes
+Serves web/index.html minified exactly like minify.py does for the board, and fakes
 the controller's API (schedule, modes, pause, relay state) using your PC's clock.
+The page is rebuilt on every load, so edits to web/index.html show up after a refresh.
 
     python simulator.py            # then open http://localhost:8000
     python simulator.py 8080       # use another port
@@ -11,15 +12,14 @@ Needs internet access in the browser for the Tailwind styles, like the real devi
 Nothing is saved: restarting the script resets the settings.
 """
 import json
-import re
 import sys
 import time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-SKETCH = Path(__file__).with_name("ESP8266-SmartIrrigationSystem.ino")
+import minify
+
 DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 DEFAULT_NAME = "Irrigation ESP"
 RELAY_PINS = {5, 4, 14, 12, 13}  # D1, D2, D5, D6, D7 as GPIO numbers, like the firmware
@@ -50,10 +50,7 @@ def clean_name(value):
 
 
 def load_page():
-    match = re.search(r'R"rawliteral\((.*?)\)rawliteral"', SKETCH.read_text(encoding="utf-8"), re.S)
-    if not match:
-        sys.exit(f"Could not find the web page in {SKETCH.name}")
-    return match.group(1).encode()
+    return minify.build()[0].encode()
 
 
 def now():
@@ -190,7 +187,9 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
-    load_page()  # fail early if the page can't be found
+    load_page()  # fail early if the page can't be minified
+    if not minify.header_up_to_date():
+        print(f"Note: {minify.HEADER.name} is out of date, run `python minify.py` before uploading to the board")
     print(f"Simulator running: http://localhost:{port}  (Ctrl+C to stop)")
     try:
         ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
