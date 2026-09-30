@@ -77,6 +77,18 @@ bool validTime(int h, int m) {
   return h >= 0 && h < 24 && m >= 0 && m < 60;
 }
 
+// Read "HH:MM" into hour and minute; anything else leaves them unchanged
+bool parseTime(const String &text, int &hour, int &minute) {
+  if (text.length() != 5 || text[2] != ':') return false;
+  for (int i : {0, 1, 3, 4}) if (text[i] < '0' || text[i] > '9') return false;
+  int h = (text[0] - '0') * 10 + (text[1] - '0');
+  int m = (text[3] - '0') * 10 + (text[4] - '0');
+  if (!validTime(h, m)) return false;
+  hour = h;
+  minute = m;
+  return true;
+}
+
 bool validSchedule(const Schedule &sc) {
   return validTime(sc.startHour, sc.startMinute) && validTime(sc.endHour, sc.endMinute);
 }
@@ -338,19 +350,9 @@ void setup() {
       }
     }
 
-    if (server.hasArg("startTime")) {
-      String startTime = server.arg("startTime");
-      int h = startTime.substring(0, 2).toInt();
-      int m = startTime.substring(3).toInt();
-      if (validTime(h, m)) { schedule.startHour = h; schedule.startMinute = m; }
-    }
-
-    if (server.hasArg("endTime")) {
-      String endTime = server.arg("endTime");
-      int h = endTime.substring(0, 2).toInt();
-      int m = endTime.substring(3).toInt();
-      if (validTime(h, m)) { schedule.endHour = h; schedule.endMinute = m; }
-    }
+    // Times are only changed when they are valid
+    if (server.hasArg("startTime")) parseTime(server.arg("startTime"), schedule.startHour, schedule.startMinute);
+    if (server.hasArg("endTime")) parseTime(server.arg("endTime"), schedule.endHour, schedule.endMinute);
 
     saveSettings();
     sendState();

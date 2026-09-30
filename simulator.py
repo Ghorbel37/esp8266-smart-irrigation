@@ -119,10 +119,10 @@ def state_json():
 
 
 def parse_time(value):
-    try:
-        h, m = int(value[:2]), int(value[3:5])
-    except ValueError:
+    """"HH:MM" as (hour, minute), or None if invalid: same rules as parseTime() in the firmware."""
+    if len(value) != 5 or value[2] != ":" or not all(c in "0123456789" for c in value[:2] + value[3:]):
         return None
+    h, m = int(value[:2]), int(value[3:])
     return (h, m) if 0 <= h < 24 and 0 <= m < 60 else None
 
 
