@@ -15,6 +15,7 @@
 #define INPUT 0
 #define OUTPUT 1
 #define PROGMEM
+#define strlen_P strlen
 enum { D0 = 16, D1 = 5, D2 = 4, D3 = 0, D4 = 2, D5 = 14, D6 = 12, D7 = 13, D8 = 15, LED_BUILTIN = 2 };
 
 inline size_t strlcpy(char *dst, const char *src, size_t size) {

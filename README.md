@@ -82,7 +82,7 @@ By default the relay is driven as **active LOW** (it turns on when the pin is LO
 
 ### Arduino Libraries
 - `ESP8266WiFi` - WiFi connectivity
-- `ESP8266WebServer` - Web server functionality
+- `ESP Async WebServer` and `ESP Async TCP` (by ESP32Async) - Web server that serves several connections at once
 - `EEPROM` - Saving settings to flash (included with the ESP8266 core)
 - `ESP32Time` - RTC (Real-Time Clock) management
 - `time.h` - Time utilities
@@ -95,9 +95,9 @@ In the [Arduino IDE](https://www.arduino.cc/en/software) 2:
 
 1. **File > Preferences > Additional boards manager URLs**: add `https://arduino.esp8266.com/stable/package_esp8266com_index.json`
 2. **Tools > Board > Boards Manager**: install **esp8266** by ESP8266 Community (tested with 3.1.2)
-3. **Tools > Manage Libraries**: install **ESP32Time** by fbiego (tested with 2.0.6; it works on the ESP8266 too)
+3. **Tools > Manage Libraries**: install **ESP32Time** by fbiego (tested with 2.0.6; it works on the ESP8266 too), and **ESP Async WebServer** and **ESP Async TCP** by ESP32Async (tested with 3.12.1 and 2.0.0). Pick the ESP32Async ones: older copies with similar names are no longer maintained
 
-`ESP8266WiFi`, `ESP8266WebServer` and `EEPROM` come with the esp8266 board package.
+`ESP8266WiFi` and `EEPROM` come with the esp8266 board package.
 
 With [arduino-cli](https://arduino.github.io/arduino-cli/) instead:
 
@@ -105,7 +105,7 @@ With [arduino-cli](https://arduino.github.io/arduino-cli/) instead:
 arduino-cli config add board_manager.additional_urls https://arduino.esp8266.com/stable/package_esp8266com_index.json
 arduino-cli core update-index
 arduino-cli core install esp8266:esp8266
-arduino-cli lib install ESP32Time
+arduino-cli lib install ESP32Time "ESP Async TCP" "ESP Async WebServer"
 arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 .
 arduino-cli upload --fqbn esp8266:esp8266:nodemcuv2 -p COM5 .   # your board's port
 ```

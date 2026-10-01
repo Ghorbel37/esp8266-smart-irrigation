@@ -30,10 +30,11 @@ int failures = 0;
 #define CHECK(cond) do { if (!(cond)) { \
   printf("  FAIL line %d: %s\n    last response: %s\n", __LINE__, #cond, server.lastBody.c_str()); failures++; } } while (0)
 
-// Send a request to one of the sketch's routes (the method is checked by the "methods" test)
+// Send a request to one of the sketch's routes (the method is checked by the "methods" test),
+// then run what the next loop() pass does with it: save the settings it changed
 void req(const char *path, std::vector<std::pair<std::string, std::string>> args = {}) {
-  server.args = args;
-  server.request(path);
+  server.request(path, args);
+  saveChangedSettings();
 }
 bool responseHas(const char *text) { return server.lastBody.find(text) != std::string::npos; }
 
@@ -280,16 +281,16 @@ TEST(wifiwatering, "A Wi-Fi outage doesn't stop the schedule (the clock keeps ru
   CHECK(relayOn);
 }
 
-TEST(nokeepalive, "Every answer closes its connection, so one browser can't block the others") {
+TEST(deferredsave, "Web handlers never write flash themselves; the next loop() pass saves what changed") {
   setup();
-  req("/");
-  CHECK(!server.keepAlive_);
-  server.keepAlive_ = true;
-  req("/api/state");
-  CHECK(!server.keepAlive_);
-  server.keepAlive_ = true;
-  req("/relay1/off");
-  CHECK(!server.keepAlive_);
+  int commits = EEPROM.commits;
+  server.request("/relay1/off");           // the handler alone
+  CHECK(globalOff && EEPROM.commits == commits);
+  CHECK(settingsChanged);
+  saveChangedSettings();                   // what loop() does next
+  CHECK(EEPROM.commits == commits + 1 && !settingsChanged);
+  saveChangedSettings();                   // nothing left to save
+  CHECK(EEPROM.commits == commits + 1);
 }
 
 // ---- Main ----

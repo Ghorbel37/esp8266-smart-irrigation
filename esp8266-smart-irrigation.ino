@@ -1,5 +1,6 @@
 #include <ESP8266WiFi.h>
-#include <ESP8266WebServer.h>
+#include <ESPAsyncTCP.h>
+#include <ESPAsyncWebServer.h>
 #include <EEPROM.h>
 #include "time.h"
 #include <ESP32Time.h>
@@ -25,7 +26,12 @@ const long gmtOffset_sec = 3600;
 const int daylightOffset_sec = 0;
 struct tm timeinfo;
 
-ESP8266WebServer server(80); // Web server on port 80
+// Asynchronous web server: it serves several connections at once, so a connection the browser
+// opens in advance can't block the others. Its handlers run inside the network code, where
+// delay() and slow work like writing flash aren't allowed: they only change the state, and
+// loop() saves the settings afterwards.
+AsyncWebServer server(80); // Web server on port 80
+bool settingsChanged = false;  // set by the web handlers, saved to flash by loop()
 
 uint8_t relayPin = DEFAULT_RELAY_PIN;
 bool relayActiveHigh = DEFAULT_ACTIVE_HIGH;
@@ -260,7 +266,7 @@ void getNextRunTime(char *buf, size_t len) {
 }
 
 // Send the current state as JSON (read by the web page)
-void sendState() {
+void sendState(AsyncWebServerRequest *request) {
   updateRelay();  // reflect a change made by the request right away
 
   char next[32];
@@ -280,9 +286,7 @@ void sendState() {
     schedule.startHour, schedule.startMinute, schedule.endHour, schedule.endMinute,
     rtc.getHour(true), rtc.getMinute(), next,
     deviceName, relayPin, relayActiveHigh ? "true" : "false");
-  // Close the connection after answering: a browser keeping it open would block other requests
-  server.keepAlive(false);
-  server.send(200, "application/json", json);
+  request->send(200, "application/json", json);
 }
 
 // Wi-Fi watchdog. The ESP8266 reconnects by itself, but it can get stuck (for example after the
@@ -314,6 +318,13 @@ void checkWifi() {
   }
 }
 
+// Save what the web handlers changed. Called from loop(), never from a handler
+void saveChangedSettings() {
+  if (!settingsChanged) return;
+  settingsChanged = false;
+  saveSettings();
+}
+
 void setup() {
   Serial.begin(115200);
   digitalWrite(LED_BUILTIN, LOW);
@@ -341,77 +352,76 @@ void setup() {
   Serial.print("ESP8266 Web Server's IP address: ");
   Serial.println(WiFi.localIP());
 
-  server.on("/", HTTP_GET, []() {
-    server.keepAlive(false);
-    server.send_P(200, "text/html", INDEX_HTML);
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/html", (const uint8_t *)INDEX_HTML, strlen_P(INDEX_HTML));
   });
 
   server.on("/api/state", HTTP_GET, sendState);
 
   // Actions only accept POST, with form-encoded arguments in the body
   // Force ON for minutes=N (default 60, at most 24 h), then back to the schedule
-  server.on("/relay1/on", HTTP_POST, []() {
-    long minutes = server.hasArg("minutes") ? server.arg("minutes").toInt() : DEFAULT_ON_MINUTES;
+  server.on("/relay1/on", HTTP_POST, [](AsyncWebServerRequest *request) {
+    long minutes = request->hasArg("minutes") ? request->arg("minutes").toInt() : DEFAULT_ON_MINUTES;
     if (minutes < 1) minutes = DEFAULT_ON_MINUTES;
     if (minutes > MAX_ON_MINUTES) minutes = MAX_ON_MINUTES;
     forceOnUntil = millis() + minutes * 60UL * 1000;
     globalOff = LOW;
     globalOn = HIGH;
-    saveSettings();  // only writes when leaving Force OFF
-    sendState();
+    settingsChanged = true;  // only writes when leaving Force OFF
+    sendState(request);
   });
 
-  server.on("/relay1/off", HTTP_POST, []() {
+  server.on("/relay1/off", HTTP_POST, [](AsyncWebServerRequest *request) {
     globalOn = LOW;
     globalOff = HIGH;
-    saveSettings();
-    sendState();
+    settingsChanged = true;
+    sendState(request);
   });
 
-  server.on("/relay1/clear", HTTP_POST, []() {
+  server.on("/relay1/clear", HTTP_POST, [](AsyncWebServerRequest *request) {
     globalOn = LOW;
     globalOff = LOW;
-    saveSettings();
-    sendState();
+    settingsChanged = true;
+    sendState(request);
   });
 
-  server.on("/setSchedule", HTTP_POST, []() {
+  server.on("/setSchedule", HTTP_POST, [](AsyncWebServerRequest *request) {
     for (int i = 0; i < 7; i++) {
       schedule.days[i] = false;
     }
-    for (uint8_t i = 0; i < server.args(); i++) {
-      if (server.argName(i) == "day") {
-        int day = server.arg(i).toInt();
+    for (uint8_t i = 0; i < request->args(); i++) {
+      if (request->argName(i) == "day") {
+        int day = request->arg(i).toInt();
         if (day >= 0 && day < 7) schedule.days[day] = true;
       }
     }
 
     // Times are only changed when they are valid
-    if (server.hasArg("startTime")) parseTime(server.arg("startTime"), schedule.startHour, schedule.startMinute);
-    if (server.hasArg("endTime")) parseTime(server.arg("endTime"), schedule.endHour, schedule.endMinute);
+    if (request->hasArg("startTime")) parseTime(request->arg("startTime"), schedule.startHour, schedule.startMinute);
+    if (request->hasArg("endTime")) parseTime(request->arg("endTime"), schedule.endHour, schedule.endMinute);
 
-    saveSettings();
-    sendState();
+    settingsChanged = true;
+    sendState(request);
   });
 
   // Device settings: POST /config with name=Garden&pin=13&activeHigh=0 (every argument is optional)
-  server.on("/config", HTTP_POST, []() {
-    if (server.hasArg("name")) setDeviceName(server.arg("name"));
-    if (server.hasArg("pin")) {
-      int pin = server.arg("pin").toInt();
+  server.on("/config", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (request->hasArg("name")) setDeviceName(request->arg("name"));
+    if (request->hasArg("pin")) {
+      int pin = request->arg("pin").toInt();
       if (validRelayPin(pin)) setRelayPin(pin);
     }
-    if (server.hasArg("activeHigh")) {
-      String v = server.arg("activeHigh");
+    if (request->hasArg("activeHigh")) {
+      String v = request->arg("activeHigh");
       relayActiveHigh = v == "1" || v == "true";
     }
-    saveSettings();
-    sendState();
+    settingsChanged = true;
+    sendState(request);
   });
 
-  server.on("/disable", HTTP_POST, []() {
+  server.on("/disable", HTTP_POST, [](AsyncWebServerRequest *request) {
     disableUntil = millis() + 5UL * 60 * 1000; // Disable for 5 minutes
-    sendState();
+    sendState(request);
   });
 
   server.begin();
@@ -419,7 +429,7 @@ void setup() {
 }
 
 void loop() {
-  server.handleClient();
+  saveChangedSettings();
   updateRelay();
   checkWifi();
 

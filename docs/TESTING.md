@@ -8,7 +8,7 @@ This project is tested at five levels. The first four run on a computer with one
 | **simulator** | The simulator's API behaves like the firmware: routes, GET/POST, validation, JSON | Python 3.10+ | always |
 | **firmware** | The real sketch, compiled on the computer against fake Arduino libraries: schedule, modes, Force ON cutoff, clock, saved settings, JSON, served page | a C++17 compiler (g++ or clang++) | always |
 | **browser** | The web page clicked through in a headless browser, against the simulator | Playwright | `--browser` |
-| **compile** | The sketch builds for a real ESP8266 with no warnings | Arduino IDE 2 or arduino-cli, with the esp8266 core and ESP32Time | `--compile` |
+| **compile** | The sketch builds for a real ESP8266 with no warnings in the project's code | Arduino IDE 2 or arduino-cli, with the esp8266 core and the libraries from the README | `--compile` |
 | **hardware** | The board, relay, Wi-Fi, NTP and flash really work | an ESP8266 and a relay module | by hand, [checklist below](#hardware-checklist) |
 
 ## Running the Tests
@@ -88,7 +88,7 @@ Starts the simulator on a free port and checks: `/` serves the minified page; `/
 - **Pins**: `digitalWrite` and `pinMode` are recorded, so tests check the relay pin's level and mode
 - **Flash**: `EEPROM` is a byte array that starts erased (all `0xFF`) and counts commits, so tests check what is saved and that flash isn't written needlessly
 - **Time**: `millis()`, `time()` and the clock's day/hour/minute are variables the tests set
-- **Web server**: routes are recorded with their method; tests call them directly and read the response
+- **Web server**: a stand-in for the async web server records the routes with their method; tests call them directly and read the response, then run what the next `loop()` pass does
 
 Each test runs in its own process, so it starts from a new board:
 
@@ -106,7 +106,7 @@ Each test runs in its own process, so it starts from a new board:
 | `json` | The longest possible state fits the 384-byte JSON buffer |
 | `wifi` | Without Wi-Fi the board still starts; the connection is retried from scratch every 30 s, and the count restarts after each outage |
 | `wifiwatering` | A Wi-Fi outage doesn't stop a scheduled run |
-| `nokeepalive` | Every answer closes its connection, so one browser can't block the others |
+| `deferredsave` | Web handlers never write flash themselves (they run inside the network code); the next `loop()` pass saves what changed |
 | `page` | `/` serves exactly `INDEX_HTML` from `index_html.h` |
 
 To run one test by hand:
@@ -123,7 +123,7 @@ Opens the page at phone size and checks: first load; the mode buttons and pause 
 
 ### compile
 
-Builds the sketch with `arduino-cli compile --warnings all` into a temporary folder and fails on any error or warning. It prints the flash and RAM use.
+Builds the sketch with `arduino-cli compile --warnings all` into a temporary folder and fails on any error, or on a warning in the project's own code (the ESP8266 core and the async web server libraries have warnings of their own, which are ignored). It prints the flash and RAM use.
 
 ## Adding a Test
 

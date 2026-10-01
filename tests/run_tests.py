@@ -151,8 +151,10 @@ def run_compile(suite, fqbn):
             [cli, "compile", "--fqbn", fqbn, "--warnings", "all", "--build-path", tmp, str(ROOT)],
             capture_output=True, text=True, encoding="utf-8", errors="replace")
     output = result.stdout + result.stderr
-    warnings = [line for line in output.splitlines() if "warning:" in line]
-    label = f"compile for {fqbn} with no warnings"
+    # Only our own files count: the libraries (ESP8266 core, async web server) have warnings we don't control
+    third_party = ("/libraries/", r"\libraries" + "\\", "/packages/", r"\packages" + "\\")
+    warnings = [line for line in output.splitlines() if "warning:" in line and not any(t in line for t in third_party)]
+    label = f"compile for {fqbn} with no warnings in the project's code"
     if result.returncode or warnings:
         suite.fail(label, output)
         return
