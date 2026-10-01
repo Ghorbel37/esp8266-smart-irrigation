@@ -230,17 +230,22 @@
 
   // Send a request and show the state it returns. Actions are sent as POST with q as the body
   // (a GET could be triggered by a link preview or another website); without q it's a GET.
+  // A request gives up after 4 s, so a lost connection can't leave the page hanging.
   async function call(url, q) {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 4000);
     try {
-      const r = await fetch(url, q && { method: 'POST', body: q });
+      const r = await fetch(url, q ? { method: 'POST', body: q, signal: abort.signal } : { signal: abort.signal });
       if (!r.ok) throw 0;
       const s = await r.json();
       $('err').classList.add('hidden');
       render(s);
       return s;
     } catch (e) {
-      $('err').textContent = 'Could not reach the controller. Check that it is powered and on Wi-Fi.';
+      $('err').textContent = 'Could not reach the controller. Check that it is powered and on Wi-Fi. Retrying…';
       $('err').classList.remove('hidden');
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -284,9 +289,20 @@
     }
   };
 
-  // Load the state now, then refresh it every 5 seconds
-  call('/api/state');
-  setInterval(() => call('/api/state'), 5000);
+  // Load the state now, then every 5 seconds. The next request starts only once the previous one
+  // has finished, so requests can't pile up when the connection is bad.
+  let polling = false, pollTimer;
+  async function poll() {
+    if (polling) return;
+    polling = true;
+    clearTimeout(pollTimer);
+    await call('/api/state');
+    polling = false;
+    pollTimer = setTimeout(poll, 5000);
+  }
+  // Refresh as soon as the page is shown again (for example when the phone's screen turns back on)
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
+  poll();
 </script>
 </body>
 </html>

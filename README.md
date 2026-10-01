@@ -21,6 +21,7 @@ A WiFi-enabled smart irrigation controller built on the ESP8266 microcontroller.
 - Responsive page that works on phones (one column) and computers (two columns)
 - Dark mode that follows the device theme, with a toggle button that remembers your choice on each device
 - Status refreshes every 5 seconds: watering or not, current mode, pause time left, next run
+- Keeps working on a flaky connection: a request gives up after 4 s, the page shows an error and retries by itself, and it refreshes as soon as you come back to it
 - Manual override controls (Force ON/OFF), with the Force ON duration set on the page
 - Schedule configuration via web form
 
@@ -267,6 +268,8 @@ Valve (-) ---------> Power Supply (-)
 - The board shows up in Windows Device Manager under **Ports (COM & LPT)**
 
 ### ESP8266 Won't Connect to WiFi
+- The board starts even without Wi-Fi (it waits 30 s at boot) and retries the connection every 30 s by itself; the Serial Monitor shows `WiFi lost`, `reconnecting` and `WiFi back`
+- During an outage the schedule keeps running on the board's clock, as long as the board isn't restarted
 - Verify SSID and password are correct
 - Check WiFi signal strength
 - Ensure your router supports 2.4GHz (ESP8266 doesn't support 5GHz)

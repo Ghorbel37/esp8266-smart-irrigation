@@ -50,6 +50,7 @@ struct SerialStub {
   template <class T> void print(T) {}
   template <class T> void println(T) {}
   void println() {}
+  template <class... T> void printf(const char *, T...) {}
   void begin(long) {}
 };
 extern SerialStub Serial;

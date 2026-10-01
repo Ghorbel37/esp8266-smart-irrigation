@@ -28,8 +28,8 @@ Each test is listed with `ok` or `FAIL`, then a summary:
 == Summary (23.2 s)
   PASSED   minify     14 passed
   PASSED   simulator  9 passed
-  PASSED   firmware   11 passed
-  PASSED   browser    8 passed
+  PASSED   firmware   14 passed
+  PASSED   browser    9 passed
   PASSED   compile    1 passed
 
 All suites passed
@@ -104,6 +104,9 @@ Each test runs in its own process, so it starts from a new board:
 | `clock` | The schedule waits until NTP has set the clock; Force ON still works |
 | `methods` | `/` and `/api/state` are GET, every action is POST |
 | `json` | The longest possible state fits the 384-byte JSON buffer |
+| `wifi` | Without Wi-Fi the board still starts; the connection is retried from scratch every 30 s, and the count restarts after each outage |
+| `wifiwatering` | A Wi-Fi outage doesn't stop a scheduled run |
+| `nokeepalive` | Every answer closes its connection, so one browser can't block the others |
 | `page` | `/` serves exactly `INDEX_HTML` from `index_html.h` |
 
 To run one test by hand:
@@ -116,7 +119,7 @@ g++ -std=c++17 -Wall -Itests/firmware/stubs tests/firmware/test_firmware.cpp -o 
 
 ### browser ([tests/test_browser.py](../tests/test_browser.py))
 
-Opens the page at phone size and checks: first load; the mode buttons and pause (and the POST requests they send); the Force ON duration is sent, remembered after a reload, and 0 is refused; saving the schedule; device settings (pin list, saved, title updated); the error message when the controller doesn't answer; the dark mode toggle and its memory. Any JavaScript error fails the test.
+Opens the page at phone size and checks: first load; the mode buttons and pause (and the POST requests they send); the Force ON duration is sent, remembered after a reload, and 0 is refused; saving the schedule; device settings (pin list, saved, title updated); the error message when the controller doesn't answer; a controller that stops answering (the request is dropped after 4 s, requests never pile up, and the page recovers by itself); the dark mode toggle and its memory. Any JavaScript error fails the test.
 
 ### compile
 

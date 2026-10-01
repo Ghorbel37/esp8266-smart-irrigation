@@ -9,9 +9,11 @@ class ESP8266WebServer {
   std::map<std::string, int> methods;
   std::vector<std::pair<std::string, std::string>> args;
   std::string lastBody;
+  bool keepAlive_ = true;  // what the sketch asked for its last answer
   ESP8266WebServer(int) {}
   void on(const char *path, int m, std::function<void()> f) { routes[path] = f; methods[path] = m; }
   void begin() {}
+  void keepAlive(bool k) { keepAlive_ = k; }
   void handleClient() {}
   void send(int, const char *, const char *body) { lastBody = body; }
   void send_P(int, const char *, const char *body) { lastBody = body; }

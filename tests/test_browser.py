@@ -146,6 +146,26 @@ class Page(unittest.TestCase):
         self.page.wait_for_selector("#err", state="visible")
         self.assertIn("Could not reach the controller", self.text("#err"))
 
+    def test_recovers_when_the_controller_stops_answering(self):
+        """A request that never gets an answer is dropped after 4 s, and the page recovers by itself."""
+        hung, open_requests, peak = [], [0], [0]
+
+        def track(delta):
+            open_requests[0] += delta
+            peak[0] = max(peak[0], open_requests[0])
+
+        self.page.on("request", lambda r: track(1) if "/api/state" in r.url else None)
+        self.page.on("requestfinished", lambda r: track(-1) if "/api/state" in r.url else None)
+        self.page.on("requestfailed", lambda r: track(-1) if "/api/state" in r.url else None)
+        self.page.route("**/api/state", lambda route: hung.append(route))  # never answers
+        self.page.wait_for_selector("#err", state="visible", timeout=15000)
+        self.assertIn("Retrying", self.text("#err"))
+        self.page.wait_for_timeout(6000)  # more polls while it still doesn't answer
+        self.assertLessEqual(peak[0], 1, "state requests piled up")
+        self.page.unroute_all(behavior="ignoreErrors")  # let the held requests go quietly
+        self.page.wait_for_selector("#err", state="hidden", timeout=15000)
+        self.assertEqual(self.text("#relay"), "Not watering")
+
     def test_dark_mode_toggle(self):
         dark = "document.documentElement.classList.contains('dark')"
         self.page.emulate_media(color_scheme="light")

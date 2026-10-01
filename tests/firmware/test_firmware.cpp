@@ -250,6 +250,48 @@ TEST(page, "\"/\" serves the minified page from index_html.h") {
   printf("  page: %zu bytes\n", server.lastBody.size());
 }
 
+TEST(wifi, "Without Wi-Fi the board still starts, and the connection is retried every 30 s") {
+  WiFi.connected = false;              // router down at boot
+  setup();                             // must not wait forever
+  CHECK(WiFi.mode_ == WIFI_STA && WiFi.autoReconnect && !WiFi.persistent_);
+  int begins = WiFi.begins;
+  checkWifi();                         // notices the outage
+  fakeMillis += 29000; checkWifi();
+  CHECK(WiFi.begins == begins);        // not yet
+  fakeMillis += 1000; checkWifi();
+  CHECK(WiFi.begins == begins + 1 && WiFi.disconnects == 1);  // 30 s: start again from scratch
+  fakeMillis += 10000; checkWifi();
+  CHECK(WiFi.begins == begins + 1);
+  fakeMillis += 20000; checkWifi();
+  CHECK(WiFi.begins == begins + 2);    // and every 30 s after that
+  WiFi.connected = true; checkWifi();
+  fakeMillis += 60000; checkWifi();
+  CHECK(WiFi.begins == begins + 2);    // back: no more retries
+  WiFi.connected = false; checkWifi(); // a new outage starts a new count
+  fakeMillis += 30000; checkWifi();
+  CHECK(WiFi.begins == begins + 3);
+}
+
+TEST(wifiwatering, "A Wi-Fi outage doesn't stop the schedule (the clock keeps running)") {
+  setup();
+  req("/setSchedule", {{"day", "1"}, {"startTime", "09:00"}, {"endTime", "11:00"}});  // now: Monday 10:00
+  WiFi.connected = false;
+  for (int i = 0; i < 20; i++) { fakeMillis += 30000; checkWifi(); updateRelay(); }   // 10 minutes
+  CHECK(relayOn);
+}
+
+TEST(nokeepalive, "Every answer closes its connection, so one browser can't block the others") {
+  setup();
+  req("/");
+  CHECK(!server.keepAlive_);
+  server.keepAlive_ = true;
+  req("/api/state");
+  CHECK(!server.keepAlive_);
+  server.keepAlive_ = true;
+  req("/relay1/off");
+  CHECK(!server.keepAlive_);
+}
+
 // ---- Main ----
 int main(int argc, char **argv) {
   std::string arg = argc > 1 ? argv[1] : "--list";

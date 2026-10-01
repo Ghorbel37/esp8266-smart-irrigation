@@ -280,7 +280,38 @@ void sendState() {
     schedule.startHour, schedule.startMinute, schedule.endHour, schedule.endMinute,
     rtc.getHour(true), rtc.getMinute(), next,
     deviceName, relayPin, relayActiveHigh ? "true" : "false");
+  // Close the connection after answering: a browser keeping it open would block other requests
+  server.keepAlive(false);
   server.send(200, "application/json", json);
+}
+
+// Wi-Fi watchdog. The ESP8266 reconnects by itself, but it can get stuck (for example after the
+// router restarts), so every 30 s without Wi-Fi the connection is started again from scratch.
+// The board isn't restarted: its clock keeps running, so the schedule goes on during an outage.
+#define WIFI_RETRY_MS (30UL * 1000)
+unsigned long wifiLostAt = 0;     // millis() when Wi-Fi was lost
+unsigned long wifiRetryAt = 0;    // millis() of the last attempt
+bool wifiLost = false;
+
+void checkWifi() {
+  unsigned long now = millis();
+  if (WiFi.status() == WL_CONNECTED) {
+    if (wifiLost) Serial.println("WiFi back");
+    wifiLost = false;
+    return;
+  }
+  if (!wifiLost) {
+    wifiLost = true;
+    wifiLostAt = wifiRetryAt = now;
+    Serial.println("WiFi lost");
+    return;
+  }
+  if (now - wifiRetryAt >= WIFI_RETRY_MS) {
+    wifiRetryAt = now;
+    Serial.printf("No WiFi for %lu s, reconnecting\n", (now - wifiLostAt) / 1000);
+    WiFi.disconnect();
+    WiFi.begin(ssid, password);
+  }
 }
 
 void setup() {
@@ -294,12 +325,16 @@ void setup() {
   setRelayPin(relayPin);   // relay starts switched off on the saved pin
 
   Serial.println("Connecting to Wifi");
+  WiFi.persistent(false);       // the credentials come from the sketch: don't rewrite them to flash
+  WiFi.mode(WIFI_STA);          // station only: no "ESP_xxxxxx" access point
+  WiFi.setAutoReconnect(true);  // the ESP8266 reconnects by itself after a drop
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
+  // Wait up to 30 s. Without Wi-Fi the board still starts, and checkWifi() keeps trying
+  for (int i = 0; i < 30 && WiFi.status() != WL_CONNECTED; i++) {
     delay(1000);
     Serial.print(".");
   }
-  Serial.println("Connected to WiFi");
+  Serial.println(WiFi.status() == WL_CONNECTED ? "Connected to WiFi" : "No WiFi yet, will keep trying");
 
   initLocalTime(ntpServer, gmtOffset_sec, daylightOffset_sec);
 
@@ -307,6 +342,7 @@ void setup() {
   Serial.println(WiFi.localIP());
 
   server.on("/", HTTP_GET, []() {
+    server.keepAlive(false);
     server.send_P(200, "text/html", INDEX_HTML);
   });
 
@@ -385,6 +421,7 @@ void setup() {
 void loop() {
   server.handleClient();
   updateRelay();
+  checkWifi();
 
   // Let the ESP8266 idle between passes: it draws much less current (v2.4 never paused),
   // which matters when the board runs from the 12 V supply through a regulator.
