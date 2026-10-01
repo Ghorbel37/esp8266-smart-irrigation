@@ -119,7 +119,7 @@ g++ -std=c++17 -Wall -Itests/firmware/stubs tests/firmware/test_firmware.cpp -o 
 
 ### browser ([tests/test_browser.py](../tests/test_browser.py))
 
-Opens the page at phone size and checks: first load; the mode buttons and pause (and the POST requests they send); the Force ON duration is sent, remembered after a reload, and 0 is refused; saving the schedule; device settings (pin list, saved, title updated); the error message when the controller doesn't answer; a controller that stops answering (the request is dropped after 4 s, requests never pile up, and the page recovers by itself); the dark mode toggle and its memory. Any JavaScript error fails the test.
+Opens the page at phone size and checks: first load; the mode buttons and pause (and the POST requests they send); the Force ON duration is sent, remembered after a reload, and 0 is refused; saving the schedule; device settings (pin list, saved, title updated); the error message when the controller doesn't answer; a controller that stops answering (the request is dropped after 10 s, requests never pile up, and the page recovers by itself); the dark mode toggle and its memory. Any JavaScript error fails the test.
 
 ### compile
 

@@ -230,10 +230,11 @@
 
   // Send a request and show the state it returns. Actions are sent as POST with q as the body
   // (a GET could be triggered by a link preview or another website); without q it's a GET.
-  // A request gives up after 4 s, so a lost connection can't leave the page hanging.
+  // A request gives up after 10 s, so a lost connection can't leave the page hanging. It must be longer
+  // than the 5 s the board's web server can stay busy with a connection the browser opened in advance.
   async function call(url, q) {
     const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), 4000);
+    const timer = setTimeout(() => abort.abort(), 10000);
     try {
       const r = await fetch(url, q ? { method: 'POST', body: q, signal: abort.signal } : { signal: abort.signal });
       if (!r.ok) throw 0;
