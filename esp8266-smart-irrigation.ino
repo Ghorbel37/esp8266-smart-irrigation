@@ -384,11 +384,10 @@ void setup() {
 
 void loop() {
   server.handleClient();
+  updateRelay();
 
-  // Update the relay once per second without blocking the web server
-  static unsigned long lastUpdate = 0;
-  if (millis() - lastUpdate >= 1000) {
-    lastUpdate = millis();
-    updateRelay();
-  }
+  // Let the ESP8266 idle between passes: it draws much less current (v2.4 never paused),
+  // which matters when the board runs from the 12 V supply through a regulator.
+  // Web requests wait at most 100 ms.
+  delay(100);
 }
